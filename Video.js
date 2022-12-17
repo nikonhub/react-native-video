@@ -275,6 +275,33 @@ export default class Video extends Component {
     return UIManager.getViewManagerConfig(viewManagerName);
   };
 
+  setSrc = (value) => {
+    const source = resolveAssetSource(value) || {};
+    const shouldCache = !source.__packager_asset;
+
+    let uri = source.uri || '';
+    if (uri && uri.match(/^\//)) {
+      uri = `file://${uri}`;
+    }
+
+    const isNetwork = !!(uri && uri.match(/^https?:/i));
+    const isAsset = !!(uri && uri.match(/^(assets-library|ph|ipod-library|file|content|ms-appx|ms-appdata):/i));
+      const src= {
+        uri,
+        isNetwork,
+        isAsset,
+        shouldCache,
+        type: source.type || '',
+        mainVer: source.mainVer || 0,
+        patchVer: source.patchVer || 0,
+        requestHeaders: source.headers ? this.stringsOnlyObject(source.headers) : {},
+      };
+
+
+    this.setNativeProps({ src });
+  }
+
+
   render() {
     const resizeMode = this.props.resizeMode;
     const source = resolveAssetSource(this.props.source) || {};
@@ -283,10 +310,6 @@ export default class Video extends Component {
     let uri = source.uri || '';
     if (uri && uri.match(/^\//)) {
       uri = `file://${uri}`;
-    }
-
-    if (!uri) {
-      console.log('Trying to load empty source.');
     }
 
     const isNetwork = !!(uri && uri.match(/^https?:/i));
