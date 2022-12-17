@@ -47,7 +47,7 @@ class RCTVideoManager: RCTViewManager {
             }
         })
     }
-    
+
     override func constantsToExport() -> [AnyHashable : Any]? {
         return [
             "ScaleNone": AVLayerVideoGravity.resizeAspect,

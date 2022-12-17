@@ -92,8 +92,8 @@ class RCTPlayerObserver: NSObject {
             return
         }
         
-        _playerRateChangeObserver = player.observe(\.rate, changeHandler: _handlers.handlePlaybackRateChange)
-        _playerExpernalPlaybackActiveObserver = player.observe(\.isExternalPlaybackActive, changeHandler: _handlers.handleExternalPlaybackActiveChange)
+        //_playerRateChangeObserver = player.observe(\.rate, changeHandler: _handlers.handlePlaybackRateChange)
+        //_playerExpernalPlaybackActiveObserver = player.observe(\.isExternalPlaybackActive, changeHandler: _handlers.handleExternalPlaybackActiveChange)
     }
     
     func removePlayerObservers() {
@@ -105,72 +105,72 @@ class RCTPlayerObserver: NSObject {
         guard let playerItem = playerItem else { return }
 
         _playerItemStatusObserver = playerItem.observe(\.status, options:  [.new, .old], changeHandler: _handlers.handlePlayerItemStatusChange)
-        _playerPlaybackBufferEmptyObserver = playerItem.observe(\.isPlaybackBufferEmpty, options:  [.new, .old], changeHandler: _handlers.handlePlaybackBufferKeyEmpty)
+//        _playerPlaybackBufferEmptyObserver = playerItem.observe(\.isPlaybackBufferEmpty, options:  [.new, .old], changeHandler: _handlers.handlePlaybackBufferKeyEmpty)
         _playerPlaybackLikelyToKeepUpObserver = playerItem.observe(\.isPlaybackLikelyToKeepUp, options:  [.new, .old], changeHandler: _handlers.handlePlaybackLikelyToKeepUp)
-        _playerTimedMetadataObserver = playerItem.observe(\.timedMetadata, options:  [.new], changeHandler: _handlers.handleTimeMetadataChange)
+//        _playerTimedMetadataObserver = playerItem.observe(\.timedMetadata, options:  [.new], changeHandler: _handlers.handleTimeMetadataChange)
     }
     
     func removePlayerItemObservers() {
         _playerItemStatusObserver?.invalidate()
-        _playerPlaybackBufferEmptyObserver?.invalidate()
+//        _playerPlaybackBufferEmptyObserver?.invalidate()
         _playerPlaybackLikelyToKeepUpObserver?.invalidate()
-        _playerTimedMetadataObserver?.invalidate()
+//        _playerTimedMetadataObserver?.invalidate()
     }
 
     func addPlayerViewControllerObservers() {
-        guard let playerViewController = playerViewController else { return }
+//        guard let playerViewController = playerViewController else { return }
         
-        _playerViewControllerReadyForDisplayObserver = playerViewController.observe(\.isReadyForDisplay, options:  [.new], changeHandler: _handlers.handleReadyForDisplay)
+//        _playerViewControllerReadyForDisplayObserver = playerViewController.observe(\.isReadyForDisplay, options:  [.new], changeHandler: _handlers.handleReadyForDisplay)
         
-        _playerViewControllerOverlayFrameObserver = playerViewController.contentOverlayView?.observe(\.frame, options:  [.new, .old], changeHandler: _handlers.handleViewControllerOverlayViewFrameChange)
+//        _playerViewControllerOverlayFrameObserver = playerViewController.contentOverlayView?.observe(\.frame, options:  [.new, .old], changeHandler: _handlers.handleViewControllerOverlayViewFrameChange)
     }
     
     func removePlayerViewControllerObservers() {
-        _playerViewControllerReadyForDisplayObserver?.invalidate()
-        _playerViewControllerOverlayFrameObserver?.invalidate()
+//        _playerViewControllerReadyForDisplayObserver?.invalidate()
+//        _playerViewControllerOverlayFrameObserver?.invalidate()
     }
     
     func addPlayerLayerObserver() {
-        _playerLayerReadyForDisplayObserver = playerLayer?.observe(\.isReadyForDisplay, options:  [.new], changeHandler: _handlers.handleReadyForDisplay)
+//        _playerLayerReadyForDisplayObserver = playerLayer?.observe(\.isReadyForDisplay, options:  [.new], changeHandler: _handlers.handleReadyForDisplay)
     }
     
     func removePlayerLayerObserver() {
-        _playerLayerReadyForDisplayObserver?.invalidate()
+//        _playerLayerReadyForDisplayObserver?.invalidate()
     }
     
     func addPlayerTimeObserver() {
-        removePlayerTimeObserver()
-        let progressUpdateIntervalMS:Float64 = _progressUpdateInterval / 1000
+//        removePlayerTimeObserver()
+//        let progressUpdateIntervalMS:Float64 = _progressUpdateInterval / 1000
         // @see endScrubbing in AVPlayerDemoPlaybackViewController.m
         // of https://developer.apple.com/library/ios/samplecode/AVPlayerDemo/Introduction/Intro.html
-        _timeObserver = player?.addPeriodicTimeObserver(
-            forInterval: CMTimeMakeWithSeconds(progressUpdateIntervalMS, preferredTimescale: Int32(NSEC_PER_SEC)),
-            queue:nil,
-            using:_handlers.handleTimeUpdate
-        )
+//        _timeObserver = player?.addPeriodicTimeObserver(
+//            forInterval: CMTimeMakeWithSeconds(progressUpdateIntervalMS, preferredTimescale: Int32(NSEC_PER_SEC)),
+//            queue:nil,
+//            using:_handlers.handleTimeUpdate
+//        )
     }
     
     /* Cancels the previously registered time observer. */
     func removePlayerTimeObserver() {
-        if _timeObserver != nil {
-            player?.removeTimeObserver(_timeObserver)
-            _timeObserver = nil
-        }
+//        if _timeObserver != nil {
+//            player?.removeTimeObserver(_timeObserver)
+//            _timeObserver = nil
+//        }
     }
     
     func addTimeObserverIfNotSet() {
-        if (_timeObserver == nil) {
-            addPlayerTimeObserver()
-        }
+//        if (_timeObserver == nil) {
+//            addPlayerTimeObserver()
+//        }
     }
     
     func replaceTimeObserverIfSet(_ newUpdateInterval:Float64? = nil) {
-        if let newUpdateInterval = newUpdateInterval {
-            _progressUpdateInterval = newUpdateInterval
-        }
-        if (_timeObserver != nil) {
-            addPlayerTimeObserver()
-        }
+//        if let newUpdateInterval = newUpdateInterval {
+//            _progressUpdateInterval = newUpdateInterval
+//        }
+//        if (_timeObserver != nil) {
+//            addPlayerTimeObserver()
+//        }
     }
     
     func attachPlayerEventListeners() {

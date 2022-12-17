@@ -1,9 +1,9 @@
 import AVFoundation
 import AVKit
 import Foundation
-import GoogleInteractiveMediaAds
 import React
 import Promises
+import UIKit
 
 class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverHandler {
 
@@ -61,14 +61,6 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
     private var _filterEnabled:Bool = false
     private var _presentingViewController:UIViewController?
 
-    /* IMA Ads */
-    private var _adTagUrl:String?
-    private var _imaAdsManager: RCTIMAAdsManager!
-    private var _didRequestAds:Bool = false
-    private var _adPlaying:Bool = false
-    /* Playhead used by the SDK to track content video progress and insert mid-rolls. */
-    private var _contentPlayhead: IMAAVPlayerContentPlayhead?
-
     private var _resouceLoaderDelegate: RCTResourceLoaderDelegate?
     private var _playerObserver: RCTPlayerObserver = RCTPlayerObserver()
 
@@ -103,21 +95,18 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
     @objc var onPictureInPictureStatusChanged: RCTDirectEventBlock?
     @objc var onRestoreUserInterfaceForPictureInPictureStop: RCTDirectEventBlock?
     @objc var onGetLicense: RCTDirectEventBlock?
-    @objc var onReceiveAdEvent: RCTDirectEventBlock?
 
     init(eventDispatcher:RCTEventDispatcher!) {
         super.init(frame: CGRect(x: 0, y: 0, width: 100, height: 100))
 
-        _imaAdsManager = RCTIMAAdsManager(video: self)
-
         _eventDispatcher = eventDispatcher
 
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(applicationWillResignActive(notification:)),
-            name: UIApplication.willResignActiveNotification,
-            object: nil
-        )
+       NotificationCenter.default.addObserver(
+           self,
+           selector: #selector(applicationWillResignActive(notification:)),
+           name: UIApplication.willResignActiveNotification,
+           object: nil
+       )
 
         NotificationCenter.default.addObserver(
             self,
@@ -133,12 +122,13 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
             object: nil
         )
 
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(audioRouteChanged(notification:)),
-            name: AVAudioSession.routeChangeNotification,
-            object: nil
-        )
+       NotificationCenter.default.addObserver(
+           self,
+           selector: #selector(audioRouteChanged(notification:)),
+           name: AVAudioSession.routeChangeNotification,
+           object: nil
+       )
+
         _playerObserver._handlers = self
 #if canImport(RCTVideoCache)
         _videoCache.playerItemPrepareText = playerItemPrepareText
@@ -147,8 +137,6 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
 
     required init?(coder aDecoder: NSCoder) {
         super.init(coder: aDecoder)
-
-        _imaAdsManager = RCTIMAAdsManager(video: self)
     }
 
     deinit {
@@ -212,15 +200,11 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
         let duration = CMTimeGetSeconds(playerDuration)
         let currentTimeSecs = CMTimeGetSeconds(currentTime ?? .zero)
 
-        NotificationCenter.default.post(name: NSNotification.Name("RCTVideo_progress"), object: nil, userInfo: [
-            "progress": NSNumber(value: currentTimeSecs / duration)
-        ])
+//        NotificationCenter.default.post(name: NSNotification.Name("RCTVideo_progress"), object: nil, userInfo: [
+//            "progress": NSNumber(value: currentTimeSecs / duration)
+//        ])
 
         if currentTimeSecs >= 0 {
-            if !_didRequestAds && currentTimeSecs >= 0.0001 && _adTagUrl != nil {
-                _imaAdsManager.requestAds()
-                _didRequestAds = true
-            }
             onVideoProgress?([
                 "currentTime": NSNumber(value: Float(currentTimeSecs)),
                 "playableDuration": RCTVideoUtils.calculatePlayableDuration(_player),
@@ -308,13 +292,6 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
 
                 if #available(iOS 10.0, *) {
                     self.setAutomaticallyWaitsToMinimizeStalling(self._automaticallyWaitsToMinimizeStalling)
-                }
-
-                if self._adTagUrl != nil {
-                    // Set up your content playhead and contentComplete callback.
-                    self._contentPlayhead = IMAAVPlayerContentPlayhead(avPlayer: self._player!)
-
-                    self._imaAdsManager.setUpAdsLoader()
                 }
 
                 //Perform on next run loop, otherwise onVideoLoadStart is nil
@@ -424,28 +401,31 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
 
     @objc
     func setPaused(_ paused:Bool) {
-        if paused {
-            if _adPlaying {
-                _imaAdsManager.getAdsManager()?.pause()
+            if paused {
+//                DispatchQueue.global(qos: .background).async {
+                    //self._player?.pause()
+                    _player?.rate = 0.0
+//                }
             } else {
-                _player?.pause()
-                _player?.rate = 0.0
+//                DispatchQueue.global(qos: .background).async {
+                    _player?.rate = _rate;
+                    //self._player?.play()
+//                }
             }
-        } else {
-            RCTPlayerOperations.configureAudio(ignoreSilentSwitch:_ignoreSilentSwitch, mixWithOthers:_mixWithOthers)
+//        if paused {
+//            _player?.pause()
+//            _player?.rate = 0.0
+//        } else {
+//            RCTPlayerOperations.configureAudio(ignoreSilentSwitch:_ignoreSilentSwitch, mixWithOthers:_mixWithOthers)
 
-            if _adPlaying {
-                _imaAdsManager.getAdsManager()?.resume()
-            } else {
-                if #available(iOS 10.0, *), !_automaticallyWaitsToMinimizeStalling {
-                    _player?.playImmediately(atRate: _rate)
-                } else {
-                    _player?.play()
-                    _player?.rate = _rate
-                }
-                _player?.rate = _rate
-            }
-        }
+//            if #available(iOS 10.0, *), !_automaticallyWaitsToMinimizeStalling {
+//                _player?.playImmediately(atRate: _rate)
+//            } else {
+//                _player?.play()
+//                _player?.rate = _rate
+//            }
+//            _player?.rate = _rate
+//        }
 
         _paused = paused
     }
@@ -815,25 +795,6 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
         _filterEnabled = filterEnabled
     }
 
-    // MARK: - RCTIMAAdsManager
-
-    func getAdTagUrl() -> String? {
-        return _adTagUrl
-    }
-
-    @objc
-    func setAdTagUrl(_ adTagUrl:String!) {
-        _adTagUrl = adTagUrl
-    }
-
-    func getContentPlayhead() -> IMAAVPlayerContentPlayhead? {
-        return _contentPlayhead
-    }
-
-    func setAdPlaying(_ adPlaying:Bool) {
-        _adPlaying = adPlaying
-    }
-
     // MARK: - React View Management
 
     func insertReactSubview(view:UIView!, atIndex:Int) {
@@ -1111,13 +1072,9 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
     @objc func handlePlayerItemDidReachEnd(notification:NSNotification!) {
         onVideoEnd?(["target": reactTag as Any])
 
-        if notification.object as? AVPlayerItem == _player?.currentItem {
-            _imaAdsManager.getAdsLoader()?.contentComplete()
-        }
-
         if _repeat {
             let item:AVPlayerItem! = notification.object as? AVPlayerItem
-            item.seek(to: CMTime.zero, completionHandler: nil)
+            item.seek(to: CMTime.zero)
             self.applyModifiers()
         } else {
             self.setPaused(true);
