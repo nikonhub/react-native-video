@@ -19,8 +19,6 @@ Pod::Spec.new do |s|
     ss.source_files  = "ios/Video/**/*.{h,m,swift}"
     ss.dependency "PromisesSwift"
 
-    ss.ios.dependency 'GoogleAds-IMA-iOS-SDK', '~> 3.18.1'
-    ss.tvos.dependency 'GoogleAds-IMA-tvOS-SDK', '~> 4.2'
   end
 
   s.subspec "VideoCaching" do |ss|

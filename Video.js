@@ -262,12 +262,6 @@ export default class Video extends Component {
     }
   }
 
-  _onReceiveAdEvent = (event) => {
-    if (this.props.onReceiveAdEvent) {
-      this.props.onReceiveAdEvent(event.nativeEvent);
-    }
-  };
-
   getViewManagerConfig = viewManagerName => {
     if (!UIManager.getViewManagerConfig) {
       return UIManager[viewManagerName];
@@ -373,7 +367,6 @@ export default class Video extends Component {
       onGetLicense: nativeProps.drm && nativeProps.drm.getLicense && this._onGetLicense,
       onPictureInPictureStatusChanged: this._onPictureInPictureStatusChanged,
       onRestoreUserInterfaceForPictureInPictureStop: this._onRestoreUserInterfaceForPictureInPictureStop,
-      onReceiveAdEvent: this._onReceiveAdEvent,
     });
 
     const posterStyle = {
@@ -558,8 +551,6 @@ Video.propTypes = {
   onPictureInPictureStatusChanged: PropTypes.func,
   needsToRestoreUserInterfaceForPictureInPictureStop: PropTypes.func,
   onExternalPlaybackChange: PropTypes.func,
-  adTagUrl: PropTypes.string,
-  onReceiveAdEvent: PropTypes.func,
 
   /* Required by react-native */
   scaleX: PropTypes.number,

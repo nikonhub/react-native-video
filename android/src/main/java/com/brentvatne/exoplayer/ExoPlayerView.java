@@ -22,15 +22,13 @@ import com.google.android.exoplayer2.Timeline;
 import com.google.android.exoplayer2.Tracks;
 import com.google.android.exoplayer2.text.Cue;
 import com.google.android.exoplayer2.trackselection.TrackSelectionArray;
-import com.google.android.exoplayer2.ui.AdViewProvider;
 import com.google.android.exoplayer2.ui.SubtitleView;
-import com.google.android.exoplayer2.util.Assertions;
 import com.google.android.exoplayer2.video.VideoSize;
 
 import java.util.List;
 
 @TargetApi(16)
-public final class ExoPlayerView extends FrameLayout implements AdViewProvider {
+public final class ExoPlayerView extends FrameLayout {
 
     private View surfaceView;
     private final View shutterView;
@@ -40,7 +38,6 @@ public final class ExoPlayerView extends FrameLayout implements AdViewProvider {
     private ExoPlayer player;
     private Context context;
     private ViewGroup.LayoutParams layoutParams;
-    private final FrameLayout adOverlayFrameLayout;
 
     private boolean useTextureView = true;
     private boolean useSecureView = false;
@@ -83,11 +80,8 @@ public final class ExoPlayerView extends FrameLayout implements AdViewProvider {
 
         updateSurfaceView();
 
-        adOverlayFrameLayout = new FrameLayout(context);
-
         layout.addView(shutterView, 1, layoutParams);
         layout.addView(subtitleLayout, 2, layoutParams);
-        layout.addView(adOverlayFrameLayout, 3, layoutParams);
 
         addViewInLayout(layout, 0, aspectRatioParams);
     }
@@ -143,19 +137,6 @@ public final class ExoPlayerView extends FrameLayout implements AdViewProvider {
 
     private void updateShutterViewVisibility() {
         shutterView.setVisibility(this.hideShutterView ? View.INVISIBLE : View.VISIBLE);
-    }
-
-    @Override
-    public void requestLayout() {
-        super.requestLayout();
-        post(measureAndLayout);
-    }
-
-     // AdsLoader.AdViewProvider implementation.
-
-    @Override
-    public ViewGroup getAdViewGroup() {
-        return Assertions.checkNotNull(adOverlayFrameLayout, "exo_ad_overlay must be present for ad playback");
     }
 
     /**
