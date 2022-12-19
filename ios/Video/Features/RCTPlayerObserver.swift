@@ -118,20 +118,20 @@ class RCTPlayerObserver: NSObject {
     }
 
     func addPlayerViewControllerObservers() {
-//        guard let playerViewController = playerViewController else { return }
+        guard let playerViewController = playerViewController else { return }
         
-//        _playerViewControllerReadyForDisplayObserver = playerViewController.observe(\.isReadyForDisplay, options:  [.new], changeHandler: _handlers.handleReadyForDisplay)
+        _playerViewControllerReadyForDisplayObserver = playerViewController.observe(\.isReadyForDisplay, options:  [.new], changeHandler: _handlers.handleReadyForDisplay)
         
 //        _playerViewControllerOverlayFrameObserver = playerViewController.contentOverlayView?.observe(\.frame, options:  [.new, .old], changeHandler: _handlers.handleViewControllerOverlayViewFrameChange)
     }
     
     func removePlayerViewControllerObservers() {
-//        _playerViewControllerReadyForDisplayObserver?.invalidate()
+        _playerViewControllerReadyForDisplayObserver?.invalidate()
 //        _playerViewControllerOverlayFrameObserver?.invalidate()
     }
     
     func addPlayerLayerObserver() {
-//        _playerLayerReadyForDisplayObserver = playerLayer?.observe(\.isReadyForDisplay, options:  [.new], changeHandler: _handlers.handleReadyForDisplay)
+        _playerLayerReadyForDisplayObserver = playerLayer?.observe(\.isReadyForDisplay, options:  [.new], changeHandler: _handlers.handleReadyForDisplay)
     }
     
     func removePlayerLayerObserver() {

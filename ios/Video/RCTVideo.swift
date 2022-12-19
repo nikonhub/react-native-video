@@ -403,13 +403,13 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
     func setPaused(_ paused:Bool) {
             if paused {
 //                DispatchQueue.global(qos: .background).async {
-                    //self._player?.pause()
-                    _player?.rate = 0.0
+                    _player?.pause()
+                    //_player?.rate = 0.0
 //                }
             } else {
 //                DispatchQueue.global(qos: .background).async {
-                    _player?.rate = _rate;
-                    //self._player?.play()
+                    //_player?.rate = _rate;
+                    _player?.play()
 //                }
             }
 //        if paused {
