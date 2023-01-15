@@ -12,7 +12,6 @@ import android.os.Message
 import android.text.TextUtils
 import android.util.Log
 import android.view.View
-import android.view.accessibility.CaptioningManager
 import android.widget.FrameLayout
 import com.brentvatne.react.R
 import com.brentvatne.receiver.AudioBecomingNoisyReceiver
@@ -59,8 +58,6 @@ import com.google.android.exoplayer2.source.smoothstreaming.SsMediaSource
 import com.google.android.exoplayer2.trackselection.AdaptiveTrackSelection
 import com.google.android.exoplayer2.trackselection.DefaultTrackSelector
 import com.google.android.exoplayer2.trackselection.ExoTrackSelection
-import com.google.android.exoplayer2.trackselection.TrackSelectionOverride
-import com.google.android.exoplayer2.ui.StyledPlayerView
 import com.google.android.exoplayer2.upstream.BandwidthMeter
 import com.google.android.exoplayer2.upstream.DataSource
 import com.google.android.exoplayer2.upstream.DefaultAllocator
@@ -82,12 +79,12 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
                          config: ReactExoplayerConfig
 ) : FrameLayout(
     themedReactContext
-), Player.Listener, BandwidthMeter.EventListener, BecomingNoisyListener,
-    OnAudioFocusChangeListener, DrmSessionEventListener {
+), Player.Listener, BandwidthMeter.EventListener, BecomingNoisyListener, OnAudioFocusChangeListener,
+    DrmSessionEventListener {
     private val eventEmitter = VideoEventEmitter(themedReactContext)
     private val config: ReactExoplayerConfig
     private val bandwidthMeter: DefaultBandwidthMeter?
-    private var exoPlayerView: StyledPlayerView? = null
+    private var exoPlayerView: ExoPlayerView? = null
     private var mediaDataSourceFactory: DataSource.Factory? = null
     private var player: ExoPlayer? = null
     private var trackSelector: DefaultTrackSelector? = null
@@ -116,19 +113,12 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
     private var maxHeapAllocationPercent = DEFAULT_MAX_HEAP_ALLOCATION_PERCENT
     private var minBackBufferMemoryReservePercent = DEFAULT_MIN_BACK_BUFFER_MEMORY_RESERVE
     private var minBufferMemoryReservePercent = DEFAULT_MIN_BUFFER_MEMORY_RESERVE
-    private var mainHandler: Handler? = null
 
     // Props from React
     private var backBufferDurationMs = DefaultLoadControl.DEFAULT_BACK_BUFFER_DURATION_MS
     private var srcUri: Uri? = null
     private var extension: String? = null
     private var repeat = false
-    private var audioTrackType: String? = null
-    private var audioTrackValue: Dynamic? = null
-    private var videoTrackType: String? = null
-    private var videoTrackValue: Dynamic? = null
-    private var textTrackType: String? = null
-    private var textTrackValue: Dynamic? = null
     private var textTracks: ReadableArray? = null
     private var disableFocus = false
     private var focusable = true
@@ -189,7 +179,6 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
         bandwidthMeter = config.bandwidthMeter
         createViews()
         audioManager = themedReactContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        //themedReactContext.addLifecycleEventListener(this@ReactExoplayerView)
         audioBecomingNoisyReceiver = AudioBecomingNoisyReceiver(themedReactContext)
 
         themedReactContext.addLifecycleEventListener(object : LifecycleEventListener {
@@ -222,26 +211,40 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
         eventEmitter.setViewId(id)
     }
 
+    @SuppressLint("InflateParams")
     private fun createViews() {
         clearResumePosition()
         mediaDataSourceFactory = buildDataSourceFactory(true)
         if (CookieHandler.getDefault() !== DEFAULT_COOKIE_MANAGER) {
             CookieHandler.setDefault(DEFAULT_COOKIE_MANAGER)
         }
+
         val layoutParams = LayoutParams(
             LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT
         )
-        exoPlayerView = StyledPlayerView(context)
-        exoPlayerView!!.layoutParams = layoutParams
-        exoPlayerView!!.setKeepContentOnPlayerReset(true)
-        exoPlayerView!!.useController = false
-        exoPlayerView!!.hideController()
-        exoPlayerView!!.setShutterBackgroundColor(0)
+
+        //aspectRatioLayout = AspectRatioFrameLayout(themedReactContext)
+        //aspectRatioLayout!!.layoutParams = layoutParams
+        //exoPlayerView = StyledPlayerView(context)
+        //exoPlayerView = LayoutInflater.from(themedReactContext)
+        //    .inflate(R.layout.styled_player_view, null) as StyledPlayerView
+        //exoPlayerView!!.layoutParams = layoutParams
+        //exoPlayerView!!.setKeepContentOnPlayerReset(true)
+        //exoPlayerView!!.useController = false
+        //exoPlayerView!!.hideController()
+        //exoPlayerView!!.isFocusable = focusable
+        //exoPlayerView!!.setShutterBackgroundColor(0)
+        //exoPlayerView!!.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FILL
         //exoPlayerView.setShowShuffleButton(true);
         //exoPlayerView.setShowBuffering(0);
+
+        exoPlayerView = ExoPlayerView(themedReactContext)
+        exoPlayerView!!.layoutParams = layoutParams
+
         addView(exoPlayerView, 0, layoutParams)
+
         exoPlayerView!!.isFocusable = focusable
-        mainHandler = Handler()
+        //aspectRatioLayout!!.addView(exoPlayerView, 0, layoutParams)
     }
 
     override fun onAttachedToWindow() {
@@ -441,12 +444,11 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
             DefaultRenderersFactory(context).setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
                 .setEnableDecoderFallback(true)
         player = ExoPlayer.Builder(context, renderersFactory)
-            //.setTrackSelector(self.trackSelector!!)
             .setBandwidthMeter(bandwidthMeter!!)
             .setLoadControl(loadControl)
             .build()
         player!!.addListener(self)
-        exoPlayerView!!.player = player
+        exoPlayerView!!.setPlayer(player)
         audioBecomingNoisyReceiver.setListener(self)
         bandwidthMeter.addEventListener(Handler(), self)
         setPlayWhenReady(!isPaused)
@@ -498,7 +500,6 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
         if (haveResumePosition) {
             player!!.seekTo(resumeWindow, resumePosition)
         }
-        //player!!.prepare(mediaSource, !haveResumePosition, false)
         player!!.setMediaSource(mediaSource, !haveResumePosition)
         player!!.prepare()
         playerNeedsSource = false
@@ -643,7 +644,6 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
             updateResumePosition()
             player!!.release()
             player!!.removeListener(this)
-            //trackSelector = null
             player = null
         }
         progressHandler.removeMessages(SHOW_PROGRESS)
@@ -826,7 +826,6 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
                     videoLoaded()
                     if (selectTrackWhenReady && isUsingContentResolution) {
                         selectTrackWhenReady = false
-                        setSelectedTrack(C.TRACK_TYPE_VIDEO, videoTrackType, videoTrackValue)
                     }
                     keepScreenOn = preventsDisplaySleepDuringVideoPlayback
                 }
@@ -859,15 +858,6 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
     private fun videoLoaded() {
         if (loadVideoStarted) {
             loadVideoStarted = false
-            if (audioTrackType != null) {
-                setSelectedAudioTrack(audioTrackType, audioTrackValue)
-            }
-            if (videoTrackType != null) {
-                setSelectedVideoTrack(videoTrackType, videoTrackValue)
-            }
-            if (textTrackType != null) {
-                setSelectedTextTrack(textTrackType, textTrackValue)
-            }
             val videoFormat = player!!.videoFormat
             val width = videoFormat?.width ?: 0
             val height = videoFormat?.height ?: 0
@@ -1062,7 +1052,6 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
         }
         if (isUsingContentResolution) {
             // Discontinuity events might have a different track list so we update the selected track
-            setSelectedTrack(C.TRACK_TYPE_VIDEO, videoTrackType, videoTrackValue)
             selectTrackWhenReady = true
         }
         // When repeat is turned on, reaching the end of the video will not cause a state change
@@ -1080,10 +1069,6 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
         if (playbackState == Player.STATE_READY && seekTime != C.TIME_UNSET) {
             eventEmitter.seek(player!!.currentPosition, seekTime)
             seekTime = C.TIME_UNSET
-            if (isUsingContentResolution) {
-                // We need to update the selected track to make sure that it still matches user selection if track list has changed in this period
-                setSelectedTrack(C.TRACK_TYPE_VIDEO, videoTrackType, videoTrackValue)
-            }
         }
     }
 
@@ -1205,18 +1190,13 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
         }
     }
 
-    fun setTextTracks(textTracks: ReadableArray?) {
-        this.textTracks = textTracks
-        reloadSource()
-    }
-
     private fun reloadSource() {
         playerNeedsSource = true
         initializePlayer()
     }
 
     fun setResizeModeModifier(@ResizeMode.Mode resizeMode: Int) {
-        exoPlayerView!!.resizeMode = resizeMode
+        exoPlayerView!!.setResizeMode(resizeMode)
     }
 
     private fun applyModifiers() {
@@ -1237,156 +1217,6 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
 
     fun setPreventsDisplaySleepDuringVideoPlayback(preventsDisplaySleepDuringVideoPlayback: Boolean) {
         this.preventsDisplaySleepDuringVideoPlayback = preventsDisplaySleepDuringVideoPlayback
-    }
-
-    fun setSelectedTrack(trackType: Int, type: String?, value: Dynamic?) {
-        var type = type
-        if (player == null) return
-        val rendererIndex = getTrackRendererIndex(trackType)
-        if (rendererIndex == C.INDEX_UNSET) {
-            return
-        }
-        val info = trackSelector!!.currentMappedTrackInfo ?: return
-        val groups = info.getTrackGroups(rendererIndex)
-        var groupIndex = C.INDEX_UNSET
-        var tracks: MutableList<Int?> = ArrayList()
-        tracks.add(0)
-        if (TextUtils.isEmpty(type)) {
-            type = "default"
-        }
-        val disableParameters =
-            trackSelector!!.parameters.buildUpon().setRendererDisabled(rendererIndex, true).build()
-        if (type == "disabled") {
-            trackSelector!!.setParameters(disableParameters)
-            return
-        } else if (type == "language") {
-            for (i in 0 until groups.length) {
-                val format = groups[i].getFormat(0)
-                if (format.language != null && format.language == value!!.asString()) {
-                    groupIndex = i
-                    break
-                }
-            }
-        } else if (type == "title") {
-            for (i in 0 until groups.length) {
-                val format = groups[i].getFormat(0)
-                if (format.id != null && format.id == value!!.asString()) {
-                    groupIndex = i
-                    break
-                }
-            }
-        } else if (type == "index") {
-            if (value!!.asInt() < groups.length) {
-                groupIndex = value.asInt()
-            }
-        } else if (type == "resolution") {
-            val height = value!!.asInt()
-            for (i in 0 until groups.length) { // Search for the exact height
-                val group = groups[i]
-                var closestFormat: Format? = null
-                var closestTrackIndex = -1
-                var usingExactMatch = false
-                for (j in 0 until group.length) {
-                    val format = group.getFormat(j)
-                    if (format.height == height) {
-                        groupIndex = i
-                        tracks[0] = j
-                        closestFormat = null
-                        closestTrackIndex = -1
-                        usingExactMatch = true
-                        break
-                    } else if (isUsingContentResolution) {
-                        // When using content resolution rather than ads, we need to try and find the closest match if there is no exact match
-                        if (closestFormat != null) {
-                            if ((format.bitrate > closestFormat.bitrate || format.height > closestFormat.height) && format.height < height) {
-                                // Higher quality match
-                                closestFormat = format
-                                closestTrackIndex = j
-                            }
-                        } else if (format.height < height) {
-                            closestFormat = format
-                            closestTrackIndex = j
-                        }
-                    }
-                }
-                // This is a fallback if the new period contains only higher resolutions than the user has selected
-                if (closestFormat == null && isUsingContentResolution && !usingExactMatch) {
-                    // No close match found - so we pick the lowest quality
-                    var minHeight = Int.MAX_VALUE
-                    for (j in 0 until group.length) {
-                        val format = group.getFormat(j)
-                        if (format.height < minHeight) {
-                            minHeight = format.height
-                            groupIndex = i
-                            tracks[0] = j
-                        }
-                    }
-                }
-                // Selecting the closest match found
-                if (closestFormat != null && closestTrackIndex != -1) {
-                    // We found the closest match instead of an exact one
-                    groupIndex = i
-                    tracks[0] = closestTrackIndex
-                }
-            }
-        } else if (trackType == C.TRACK_TYPE_TEXT && Util.SDK_INT > 18) { // Text default
-            // Use system settings if possible
-            val captioningManager =
-                themedReactContext.getSystemService(Context.CAPTIONING_SERVICE) as CaptioningManager
-            if (captioningManager != null && captioningManager.isEnabled) {
-                groupIndex = getGroupIndexForDefaultLocale(groups)
-            }
-        } else if (rendererIndex == C.TRACK_TYPE_AUDIO) { // Audio default
-            groupIndex = getGroupIndexForDefaultLocale(groups)
-        }
-        if (groupIndex == C.INDEX_UNSET && trackType == C.TRACK_TYPE_VIDEO && groups.length != 0) { // Video auto
-            // Add all tracks as valid options for ABR to choose from
-            val group = groups[0]
-            tracks = ArrayList(group.length)
-            val allTracks = ArrayList<Int?>(group.length)
-            groupIndex = 0
-            for (j in 0 until group.length) {
-                allTracks.add(j)
-            }
-
-            // Valiate list of all tracks and add only supported formats
-            var supportedFormatLength = 0
-            val supportedTrackList = ArrayList<Int?>()
-            for (g in allTracks.indices) {
-                val format = group.getFormat(g)
-                if (isFormatSupported(format)) {
-                    supportedFormatLength++
-                }
-            }
-            if (allTracks.size == 1) {
-                // With only one tracks we can't remove any tracks so attempt to play it anyway
-                tracks = allTracks
-            } else {
-                tracks = ArrayList(supportedFormatLength + 1)
-                for (k in allTracks.indices) {
-                    val format = group.getFormat(k)
-                    if (isFormatSupported(format)) {
-                        tracks.add(allTracks[k])
-                        supportedTrackList.add(allTracks[k])
-                    }
-                }
-            }
-        }
-        if (groupIndex == C.INDEX_UNSET) {
-            trackSelector!!.setParameters(disableParameters)
-            return
-        }
-
-        if (tracks.contains(null)) {
-            return
-        }
-
-        val selectionOverride = TrackSelectionOverride(groups[groupIndex], tracks as List<Int>)
-        val selectionParameters = trackSelector!!.parameters.buildUpon()
-            .setRendererDisabled(rendererIndex, false)
-            .addOverride(selectionOverride)
-            .build()
-        trackSelector!!.setParameters(selectionParameters)
     }
 
     private fun isFormatSupported(format: Format): Boolean {
@@ -1422,24 +1252,6 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
             }
         }
         return groupIndex
-    }
-
-    fun setSelectedVideoTrack(type: String?, value: Dynamic?) {
-        videoTrackType = type
-        videoTrackValue = value
-        setSelectedTrack(C.TRACK_TYPE_VIDEO, videoTrackType, videoTrackValue)
-    }
-
-    fun setSelectedAudioTrack(type: String?, value: Dynamic?) {
-        audioTrackType = type
-        audioTrackValue = value
-        setSelectedTrack(C.TRACK_TYPE_AUDIO, audioTrackType, audioTrackValue)
-    }
-
-    fun setSelectedTextTrack(type: String?, value: Dynamic?) {
-        textTrackType = type
-        textTrackValue = value
-        setSelectedTrack(C.TRACK_TYPE_TEXT, textTrackType, textTrackValue)
     }
 
     fun setPausedModifier(paused: Boolean) {
@@ -1542,16 +1354,15 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
 
     fun setUseTextureView(useTextureView: Boolean) {
         val finallyUseTextureView = useTextureView && drmUUID == null
-        //exoPlayerView!!.setUseTextureView(finallyUseTextureView)
+        exoPlayerView!!.setUseTextureView(finallyUseTextureView)
     }
 
     fun useSecureView(useSecureView: Boolean) {
-        //exoPlayerView!!.useSecureView(useSecureView)
+        exoPlayerView!!.useSecureView(useSecureView)
     }
 
     fun setHideShutterView(hideShutterView: Boolean) {
-        //exoPlayerView!!.setHideShutterView(hideShutterView)
-        exoPlayerView!!.setShutterBackgroundColor(0)
+        exoPlayerView!!.setHideShutterView(hideShutterView)
     }
 
     fun setBufferConfig(newMinBufferMs: Int,
@@ -1603,10 +1414,6 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
 
     override fun onDrmKeysRemoved(windowIndex: Int, mediaPeriodId: MediaSource.MediaPeriodId?) {
         Log.d("DRM Info", "onDrmKeysRemoved")
-    }
-
-    fun setSubtitleStyle(style: SubtitleStyle) {
-        //exoPlayerView!!.setSubtitleStyle(style)
     }
 
     companion object {

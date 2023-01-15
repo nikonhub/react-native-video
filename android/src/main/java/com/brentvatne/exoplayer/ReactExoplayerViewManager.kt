@@ -135,66 +135,6 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) :
         videoView.setPreventsDisplaySleepDuringVideoPlayback(preventsSleep)
     }
 
-    @ReactProp(name = PROP_SELECTED_VIDEO_TRACK)
-    fun setSelectedVideoTrack(videoView: ReactExoplayerView, selectedVideoTrack: ReadableMap?
-    ) {
-        var typeString: String? = null
-        var value: Dynamic? = null
-        if (selectedVideoTrack != null) {
-            typeString =
-                if (selectedVideoTrack.hasKey(PROP_SELECTED_VIDEO_TRACK_TYPE)) selectedVideoTrack.getString(
-                    PROP_SELECTED_VIDEO_TRACK_TYPE
-                ) else null
-            value =
-                if (selectedVideoTrack.hasKey(PROP_SELECTED_VIDEO_TRACK_VALUE)) selectedVideoTrack.getDynamic(
-                    PROP_SELECTED_VIDEO_TRACK_VALUE
-                ) else null
-        }
-        videoView.setSelectedVideoTrack(typeString, value)
-    }
-
-    @ReactProp(name = PROP_SELECTED_AUDIO_TRACK)
-    fun setSelectedAudioTrack(videoView: ReactExoplayerView, selectedAudioTrack: ReadableMap?
-    ) {
-        var typeString: String? = null
-        var value: Dynamic? = null
-        if (selectedAudioTrack != null) {
-            typeString =
-                if (selectedAudioTrack.hasKey(PROP_SELECTED_AUDIO_TRACK_TYPE)) selectedAudioTrack.getString(
-                    PROP_SELECTED_AUDIO_TRACK_TYPE
-                ) else null
-            value =
-                if (selectedAudioTrack.hasKey(PROP_SELECTED_AUDIO_TRACK_VALUE)) selectedAudioTrack.getDynamic(
-                    PROP_SELECTED_AUDIO_TRACK_VALUE
-                ) else null
-        }
-        videoView.setSelectedAudioTrack(typeString, value)
-    }
-
-    @ReactProp(name = PROP_SELECTED_TEXT_TRACK)
-    fun setSelectedTextTrack(videoView: ReactExoplayerView, selectedTextTrack: ReadableMap?
-    ) {
-        var typeString: String? = null
-        var value: Dynamic? = null
-        if (selectedTextTrack != null) {
-            typeString =
-                if (selectedTextTrack.hasKey(PROP_SELECTED_TEXT_TRACK_TYPE)) selectedTextTrack.getString(
-                    PROP_SELECTED_TEXT_TRACK_TYPE
-                ) else null
-            value =
-                if (selectedTextTrack.hasKey(PROP_SELECTED_TEXT_TRACK_VALUE)) selectedTextTrack.getDynamic(
-                    PROP_SELECTED_TEXT_TRACK_VALUE
-                ) else null
-        }
-        videoView.setSelectedTextTrack(typeString, value)
-    }
-
-    @ReactProp(name = PROP_TEXT_TRACKS)
-    fun setPropTextTracks(videoView: ReactExoplayerView, textTracks: ReadableArray?
-    ) {
-        videoView.setTextTracks(textTracks)
-    }
-
     @ReactProp(name = PROP_PAUSED, defaultBoolean = false)
     fun setPaused(videoView: ReactExoplayerView, paused: Boolean) {
         videoView.setPausedModifier(paused)
@@ -260,7 +200,7 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) :
         videoView.setBackBufferDurationMs(backBufferDurationMs)
     }
 
-    @ReactProp(name = PROP_CONTENT_START_TIME, defaultInt = 0)
+    @ReactProp(name = PROP_CONTENT_START_TIME, defaultInt = -1)
     fun setContentStartTime(videoView: ReactExoplayerView, contentStartTime: Int) {
         videoView.setContentStartTime(contentStartTime)
     }
@@ -300,7 +240,6 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) :
 
     @ReactProp(name = PROP_SUBTITLE_STYLE)
     fun setSubtitleStyle(videoView: ReactExoplayerView, src: ReadableMap?) {
-        videoView.setSubtitleStyle(SubtitleStyle.Companion.parse(src))
     }
 
     @ReactProp(name = PROP_BUFFER_CONFIG)
