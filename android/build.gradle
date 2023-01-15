@@ -1,4 +1,22 @@
 apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+
+buildscript {
+    // Buildscript is evaluated before everything else so we can't use getExtOrDefault
+
+    def kotlin_version = rootProject.ext.has('kotlinVersion') ? rootProject.ext.get('kotlinVersion') : project.properties['Video_kotlinVersion']
+    repositories {
+        google()
+        jcenter()
+    }
+
+    dependencies {
+        classpath 'com.android.tools.build:gradle:3.2.1'
+        // noinspection DifferentKotlinGradleVersion
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
 
 def safeExtGet(prop, fallback) {
     rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
@@ -31,6 +49,8 @@ repositories {
 }
 
 dependencies {
+    def kotlin_version = rootProject.ext.has('kotlinVersion') ? rootProject.ext.get('kotlinVersion') : project.properties['Video_kotlinVersion']
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
     implementation "com.facebook.react:react-native:${safeExtGet('reactNativeVersion', '+')}"
     implementation('com.google.android.exoplayer:exoplayer:2.18.1') {
         exclude group: 'com.android.support'
