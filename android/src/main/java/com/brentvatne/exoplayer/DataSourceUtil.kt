@@ -42,9 +42,10 @@ object DataSourceUtil {
         rawDataSourceFactory = factory
     }
 
-    fun getDefaultDataSourceFactory(context: ReactContext,
-                                    bandwidthMeter: DefaultBandwidthMeter?,
-                                    requestHeaders: Map<String?, String?>?
+    fun getDefaultDataSourceFactory(
+        context: ReactContext,
+        bandwidthMeter: DefaultBandwidthMeter?,
+        requestHeaders: Map<String?, String?>?
     ): DataSource.Factory? {
         if (defaultDataSourceFactory == null || requestHeaders != null && !requestHeaders.isEmpty()) {
             defaultDataSourceFactory =
@@ -57,9 +58,10 @@ object DataSourceUtil {
         defaultDataSourceFactory = factory
     }
 
-    fun getDefaultHttpDataSourceFactory(context: ReactContext,
-                                        bandwidthMeter: DefaultBandwidthMeter?,
-                                        requestHeaders: Map<String?, String?>?
+    fun getDefaultHttpDataSourceFactory(
+        context: ReactContext,
+        bandwidthMeter: DefaultBandwidthMeter?,
+        requestHeaders: Map<String?, String?>?
     ): HttpDataSource.Factory? {
         if (defaultHttpDataSourceFactory == null || requestHeaders != null && !requestHeaders.isEmpty()) {
             defaultHttpDataSourceFactory =
@@ -76,27 +78,28 @@ object DataSourceUtil {
         return RawResourceDataSourceFactory(context.applicationContext)
     }
 
-    private fun buildDataSourceFactory(context: ReactContext,
-                                       bandwidthMeter: DefaultBandwidthMeter?,
-                                       requestHeaders: Map<String?, String?>?
+    private fun buildDataSourceFactory(
+        context: ReactContext,
+        bandwidthMeter: DefaultBandwidthMeter?,
+        requestHeaders: Map<String?, String?>?
     ): DataSource.Factory {
         return DefaultDataSource.Factory(
-            context,
-            buildHttpDataSourceFactory(context, bandwidthMeter, requestHeaders)
+            context, buildHttpDataSourceFactory(context, bandwidthMeter, requestHeaders)
         )
     }
 
-    private fun buildHttpDataSourceFactory(context: ReactContext,
-                                           bandwidthMeter: DefaultBandwidthMeter?,
-                                           requestHeaders: Map<String?, String?>?
+    private fun buildHttpDataSourceFactory(
+        context: ReactContext,
+        bandwidthMeter: DefaultBandwidthMeter?,
+        requestHeaders: Map<String?, String?>?
     ): HttpDataSource.Factory {
         val client = OkHttpClientProvider.getOkHttpClient()
         val container = client.cookieJar as CookieJarContainer
         val handler = ForwardingCookieHandler(context)
         container.setCookieJar(JavaNetCookieJar(handler))
-        val okHttpDataSourceFactory = OkHttpDataSource.Factory(client as Call.Factory)
-            .setUserAgent(getUserAgent(context))
-            .setTransferListener(bandwidthMeter)
+        val okHttpDataSourceFactory =
+            OkHttpDataSource.Factory(client as Call.Factory).setUserAgent(getUserAgent(context))
+                .setTransferListener(bandwidthMeter)
         if (requestHeaders != null) okHttpDataSourceFactory.setDefaultRequestProperties(
             requestHeaders as Map<String, String>
         )

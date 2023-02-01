@@ -2,9 +2,6 @@ package com.brentvatne.exoplayer
 
 import android.net.Uri
 import android.text.TextUtils
-import com.facebook.react.bridge.Dynamic
-import com.facebook.react.bridge.ReactApplicationContext
-import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.common.MapBuilder
 import com.facebook.react.uimanager.ThemedReactContext
@@ -12,8 +9,10 @@ import com.facebook.react.uimanager.ViewGroupManager
 import com.facebook.react.uimanager.annotations.ReactProp
 import com.google.android.exoplayer2.DefaultLoadControl
 import com.google.android.exoplayer2.upstream.RawResourceDataSource
-import com.google.android.exoplayer2.util.Util
+import com.google.android.exoplayer2.upstream.cache.SimpleCache
 import java.util.Locale
+
+data class CacheInPool(val path: String, val cache: SimpleCache)
 
 class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) :
     ViewGroupManager<ReactExoplayerView>() {
@@ -21,8 +20,10 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) :
         return REACT_CLASS
     }
 
+    val cachePool: MutableList<CacheInPool> = mutableListOf()
+
     override fun createViewInstance(themedReactContext: ThemedReactContext): ReactExoplayerView {
-        return ReactExoplayerView(themedReactContext, config)
+        return ReactExoplayerView(themedReactContext, config, cachePool)
     }
 
     override fun onDropViewInstance(view: ReactExoplayerView) {
@@ -52,33 +53,6 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) :
 
     @ReactProp(name = PROP_DRM)
     fun setDRM(videoView: ReactExoplayerView, drm: ReadableMap?) {
-        if (drm != null && drm.hasKey(PROP_DRM_TYPE)) {
-            val drmType = if (drm.hasKey(PROP_DRM_TYPE)) drm.getString(PROP_DRM_TYPE) else null
-            val drmLicenseServer = if (drm.hasKey(PROP_DRM_LICENSESERVER)) drm.getString(
-                PROP_DRM_LICENSESERVER
-            ) else null
-            val drmHeaders =
-                if (drm.hasKey(PROP_DRM_HEADERS)) drm.getMap(PROP_DRM_HEADERS) else null
-            if (drmType != null && drmLicenseServer != null && Util.getDrmUuid(
-                    drmType
-                ) != null
-            ) {
-                val drmUUID = Util.getDrmUuid(drmType)
-                videoView.setDrmType(drmUUID)
-                videoView.setDrmLicenseUrl(drmLicenseServer)
-                if (drmHeaders != null) {
-                    val drmKeyRequestPropertiesList = ArrayList<String?>()
-                    val itr = drmHeaders.keySetIterator()
-                    while (itr.hasNextKey()) {
-                        val key = itr.nextKey()
-                        drmKeyRequestPropertiesList.add(key)
-                        drmKeyRequestPropertiesList.add(drmHeaders.getString(key))
-                    }
-                    videoView.setDrmLicenseHeader(drmKeyRequestPropertiesList.toTypedArray())
-                }
-                videoView.setUseTextureView(false)
-            }
-        }
     }
 
     @ReactProp(name = PROP_SRC)
@@ -129,8 +103,9 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) :
     }
 
     @ReactProp(name = PROP_PREVENTS_DISPLAY_SLEEP_DURING_VIDEO_PLAYBACK, defaultBoolean = false)
-    fun setPreventsDisplaySleepDuringVideoPlayback(videoView: ReactExoplayerView,
-                                                   preventsSleep: Boolean
+    fun setPreventsDisplaySleepDuringVideoPlayback(
+        videoView: ReactExoplayerView,
+        preventsSleep: Boolean
     ) {
         videoView.setPreventsDisplaySleepDuringVideoPlayback(preventsSleep)
     }

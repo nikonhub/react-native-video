@@ -58,13 +58,13 @@ internal class VideoEventEmitter(reactContext: ReactContext) {
         receiveEvent(EVENT_LOAD_START, null)
     }
 
-    fun load(duration: Double,
-             currentPosition: Double,
-             videoWidth: Int,
-             videoHeight: Int,
-             textTracks: WritableArray?,
-             videoTracks: WritableArray?,
-             trackId: String?
+    fun load(
+        duration: Double,
+        currentPosition: Double,
+        videoWidth: Int,
+        videoHeight: Int,
+        videoTracks: WritableArray?,
+        trackId: String?
     ) {
         val event = Arguments.createMap()
         event.putDouble(EVENT_PROP_DURATION, duration / 1000.0)
@@ -80,7 +80,6 @@ internal class VideoEventEmitter(reactContext: ReactContext) {
         event.putMap(EVENT_PROP_NATURAL_SIZE, naturalSize)
         event.putString(EVENT_PROP_TRACK_ID, trackId)
         event.putArray(EVENT_PROP_VIDEO_TRACKS, videoTracks)
-        event.putArray(EVENT_PROP_TEXT_TRACKS, textTracks)
 
         // TODO: Actually check if you can.
         event.putBoolean(EVENT_PROP_FAST_FORWARD, true)
@@ -93,10 +92,11 @@ internal class VideoEventEmitter(reactContext: ReactContext) {
         receiveEvent(EVENT_LOAD, event)
     }
 
-    fun progressChanged(currentPosition: Double,
-                        bufferedDuration: Double,
-                        seekableDuration: Double,
-                        currentPlaybackTime: Double
+    fun progressChanged(
+        currentPosition: Double,
+        bufferedDuration: Double,
+        seekableDuration: Double,
+        currentPlaybackTime: Double
     ) {
         val event = Arguments.createMap()
         event.putDouble(EVENT_PROP_CURRENT_TIME, currentPosition / 1000.0)
@@ -299,7 +299,6 @@ internal class VideoEventEmitter(reactContext: ReactContext) {
         private const val EVENT_PROP_HEIGHT = "height"
         private const val EVENT_PROP_ORIENTATION = "orientation"
         private const val EVENT_PROP_VIDEO_TRACKS = "videoTracks"
-        private const val EVENT_PROP_TEXT_TRACKS = "textTracks"
         private const val EVENT_PROP_HAS_AUDIO_FOCUS = "hasAudioFocus"
         private const val EVENT_PROP_IS_BUFFERING = "isBuffering"
         private const val EVENT_PROP_PLAYBACK_RATE = "playbackRate"

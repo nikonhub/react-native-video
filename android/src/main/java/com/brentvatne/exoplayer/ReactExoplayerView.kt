@@ -13,13 +13,10 @@ import android.text.TextUtils
 import android.util.Log
 import android.view.View
 import android.widget.FrameLayout
-import com.brentvatne.react.R
 import com.brentvatne.receiver.AudioBecomingNoisyReceiver
 import com.brentvatne.receiver.BecomingNoisyListener
 import com.facebook.react.bridge.Arguments
-import com.facebook.react.bridge.Dynamic
 import com.facebook.react.bridge.LifecycleEventListener
-import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.bridge.WritableArray
 import com.facebook.react.uimanager.ThemedReactContext
 import com.google.android.exoplayer2.C
@@ -28,27 +25,16 @@ import com.google.android.exoplayer2.DefaultRenderersFactory
 import com.google.android.exoplayer2.ExoPlayer
 import com.google.android.exoplayer2.Format
 import com.google.android.exoplayer2.MediaItem
-import com.google.android.exoplayer2.MediaItem.SubtitleConfiguration
 import com.google.android.exoplayer2.PlaybackException
 import com.google.android.exoplayer2.PlaybackParameters
 import com.google.android.exoplayer2.Player
 import com.google.android.exoplayer2.Timeline
 import com.google.android.exoplayer2.Tracks
-import com.google.android.exoplayer2.drm.DefaultDrmSessionManager
-import com.google.android.exoplayer2.drm.DefaultDrmSessionManagerProvider
-import com.google.android.exoplayer2.drm.DrmSessionEventListener
-import com.google.android.exoplayer2.drm.DrmSessionManager
-import com.google.android.exoplayer2.drm.DrmSessionManagerProvider
-import com.google.android.exoplayer2.drm.FrameworkMediaDrm
-import com.google.android.exoplayer2.drm.HttpMediaDrmCallback
-import com.google.android.exoplayer2.drm.UnsupportedDrmException
+import com.google.android.exoplayer2.database.StandaloneDatabaseProvider
 import com.google.android.exoplayer2.mediacodec.MediaCodecUtil
 import com.google.android.exoplayer2.metadata.Metadata
 import com.google.android.exoplayer2.source.MediaSource
-import com.google.android.exoplayer2.source.MergingMediaSource
 import com.google.android.exoplayer2.source.ProgressiveMediaSource
-import com.google.android.exoplayer2.source.SingleSampleMediaSource
-import com.google.android.exoplayer2.source.TrackGroupArray
 import com.google.android.exoplayer2.source.dash.DashMediaSource
 import com.google.android.exoplayer2.source.dash.DashUtil
 import com.google.android.exoplayer2.source.dash.DefaultDashChunkSource
@@ -62,25 +48,31 @@ import com.google.android.exoplayer2.upstream.BandwidthMeter
 import com.google.android.exoplayer2.upstream.DataSource
 import com.google.android.exoplayer2.upstream.DefaultAllocator
 import com.google.android.exoplayer2.upstream.DefaultBandwidthMeter
+import com.google.android.exoplayer2.upstream.DefaultDataSource
 import com.google.android.exoplayer2.upstream.HttpDataSource
+import com.google.android.exoplayer2.upstream.cache.CacheDataSource
+import com.google.android.exoplayer2.upstream.cache.NoOpCacheEvictor
+import com.google.android.exoplayer2.upstream.cache.SimpleCache
 import com.google.android.exoplayer2.util.Util
 import okhttp3.internal.wait
 import java.net.CookieHandler
 import java.net.CookieManager
 import java.net.CookiePolicy
-import java.util.Locale
-import java.util.UUID
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import kotlin.math.floor
+import kotlin.math.roundToInt
 
 @SuppressLint("ViewConstructor")
-class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
-                         config: ReactExoplayerConfig
+class ReactExoplayerView(
+    private val themedReactContext: ThemedReactContext,
+    config: ReactExoplayerConfig,
+    private val cachePool: MutableList<CacheInPool>
 ) : FrameLayout(
     themedReactContext
-), Player.Listener, BandwidthMeter.EventListener, BecomingNoisyListener, OnAudioFocusChangeListener,
-    DrmSessionEventListener {
+), Player.Listener, BandwidthMeter.EventListener, BecomingNoisyListener,
+    OnAudioFocusChangeListener {
     private val eventEmitter = VideoEventEmitter(themedReactContext)
     private val config: ReactExoplayerConfig
     private val bandwidthMeter: DefaultBandwidthMeter?
@@ -102,7 +94,6 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
     private var minLoadRetryCount = 3
     private var maxBitRate = 0
     private var seekTime = C.TIME_UNSET
-    private var hasDrmFailed = false
     private var isUsingContentResolution = false
     private var selectTrackWhenReady = false
     private var minBufferMs = DefaultLoadControl.DEFAULT_MIN_BUFFER_MS
@@ -119,7 +110,6 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
     private var srcUri: Uri? = null
     private var extension: String? = null
     private var repeat = false
-    private var textTracks: ReadableArray? = null
     private var disableFocus = false
     private var focusable = true
     private var disableBuffering = false
@@ -130,9 +120,6 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
     private var playInBackground = false
     private var requestHeaders: Map<String?, String?>? = null
     private var mReportBandwidth = false
-    private var drmUUID: UUID? = null
-    private var drmLicenseUrl: String? = null
-    private var drmLicenseHeader: Array<String?>? = null
     private val audioManager: AudioManager
     private val audioBecomingNoisyReceiver: AudioBecomingNoisyReceiver
 
@@ -142,7 +129,6 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
     private var lastDuration: Long = -1
     private val progressHandler: Handler = object : Handler(Looper.getMainLooper()) {
         override fun handleMessage(msg: Message) {
-            var msg = msg
             when (msg.what) {
                 SHOW_PROGRESS -> if (player != null) {
                     val pos = player!!.currentPosition
@@ -159,8 +145,9 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
                             getPositionInFirstPeriodMsForCurrentWindow(pos)
                         )
                     }
-                    msg = obtainMessage(SHOW_PROGRESS)
-                    sendMessageDelayed(msg, Math.round(mProgressUpdateInterval).toLong())
+                    sendMessageDelayed(
+                        obtainMessage(SHOW_PROGRESS), mProgressUpdateInterval.roundToInt().toLong()
+                    )
                 }
             }
         }
@@ -219,9 +206,7 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
             CookieHandler.setDefault(DEFAULT_COOKIE_MANAGER)
         }
 
-        val layoutParams = LayoutParams(
-            LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT
-        )
+        val layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
 
         //aspectRatioLayout = AspectRatioFrameLayout(themedReactContext)
         //aspectRatioLayout!!.layoutParams = layoutParams
@@ -293,15 +278,16 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
         view.layout(view.left, view.top, view.measuredWidth, view.measuredHeight)
     }
 
-    private inner class RNVLoadControl(allocator: DefaultAllocator?,
-                                       minBufferMs: Int,
-                                       maxBufferMs: Int,
-                                       bufferForPlaybackMs: Int,
-                                       bufferForPlaybackAfterRebufferMs: Int,
-                                       targetBufferBytes: Int,
-                                       prioritizeTimeOverSizeThresholds: Boolean,
-                                       backBufferDurationMs: Int,
-                                       retainBackBufferFromKeyframe: Boolean
+    private inner class RNVLoadControl(
+        allocator: DefaultAllocator?,
+        minBufferMs: Int,
+        maxBufferMs: Int,
+        bufferForPlaybackMs: Int,
+        bufferForPlaybackAfterRebufferMs: Int,
+        targetBufferBytes: Int,
+        prioritizeTimeOverSizeThresholds: Boolean,
+        backBufferDurationMs: Int,
+        retainBackBufferFromKeyframe: Boolean
     ) : DefaultLoadControl(
         allocator!!,
         minBufferMs,
@@ -321,19 +307,17 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
             val activityManager =
                 themedReactContext.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
             availableHeapInBytes =
-                Math.floor(activityManager.memoryClass * maxHeapAllocationPercent * 1024 * 1024)
-                    .toInt()
+                floor(activityManager.memoryClass * maxHeapAllocationPercent * 1024 * 1024).toInt()
         }
 
-        override fun shouldContinueLoading(playbackPositionUs: Long,
-                                           bufferedDurationUs: Long,
-                                           playbackSpeed: Float
+        override fun shouldContinueLoading(
+            playbackPositionUs: Long, bufferedDurationUs: Long, playbackSpeed: Float
         ): Boolean {
             if (disableBuffering) {
                 return false
             }
             val loadedBytes = allocator.totalBytesAllocated
-            val isHeapReached = availableHeapInBytes > 0 && loadedBytes >= availableHeapInBytes
+            val isHeapReached = availableHeapInBytes in 1..loadedBytes
             if (isHeapReached) {
                 return false
             }
@@ -360,65 +344,74 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
         val self = this
         val activity = themedReactContext.currentActivity
         // This ensures all props have been settled, to avoid async racing conditions.
-        Handler().postDelayed(Runnable {
-            try {
-                if (player == null) {
-                    // Initialize core configuration and listeners
-                    initializePlayerCore(self)
-                }
-                if (playerNeedsSource && srcUri != null) {
-                    //exoPlayerView!!.invalidateAspectRatio()
-                    // DRM session manager creation must be done on a different thread to prevent crashes so we start a new thread
-                    val es = Executors.newSingleThreadExecutor()
-                    es.execute {
-                        // DRM initialization must run on a different thread
-                        val drmSessionManager = initializePlayerDrm(self)
-                        if (drmSessionManager == null && self.drmUUID != null) {
-                            // Failed to intialize DRM session manager - cannot continue
-                            Log.e(
-                                "ExoPlayer Exception",
-                                "Failed to initialize DRM Session Manager Framework!"
-                            )
-                            eventEmitter.error(
-                                "Failed to initialize DRM Session Manager Framework!",
-                                Exception("DRM Session Manager Framework failure!"),
-                                "3003"
-                            )
-                            return@execute
-                        }
-                        if (activity == null) {
-                            Log.e("ExoPlayer Exception", "Failed to initialize Player!")
-                            eventEmitter.error(
-                                "Failed to initialize Player!",
-                                Exception("Current Activity is null!"),
-                                "1001"
-                            )
-                            return@execute
-                        }
+        Handler(Looper.getMainLooper()).postDelayed({
+                                                        try {
+                                                            if (player == null) {
+                                                                // Initialize core configuration and listeners
+                                                                initializePlayerCore(self)
+                                                            }
 
-                        // Initialize handler to run on the main thread
-                        activity.runOnUiThread(Runnable {
-                            try {
-                                // Source initialization must run on the main thread
-                                initializePlayerSource(self, drmSessionManager)
-                            } catch (ex: Exception) {
-                                self.playerNeedsSource = true
-                                Log.e("ExoPlayer Exception", "Failed to initialize Player!")
-                                Log.e("ExoPlayer Exception", ex.toString())
-                                self.eventEmitter.error(ex.toString(), ex, "1001")
-                            }
-                        })
-                    }
-                } else if (srcUri != null) {
-                    initializePlayerSource(self, null)
-                }
-            } catch (ex: Exception) {
-                self.playerNeedsSource = true
-                Log.e("ExoPlayer Exception", "Failed to initialize Player!")
-                Log.e("ExoPlayer Exception", ex.toString())
-                eventEmitter.error(ex.toString(), ex, "1001")
-            }
-        }, 1)
+                                                            if (playerNeedsSource && srcUri != null) {
+                                                                //exoPlayerView!!.invalidateAspectRatio()
+                                                                // DRM session manager creation must be done on a different thread to prevent crashes so we start a new thread
+                                                                //val es = Executors.newSingleThreadExecutor()
+                                                                //es.execute {
+                                                                if (activity != null) {
+                                                                    activity.runOnUiThread(Runnable {
+                                                                        try {
+                                                                            // Source initialization must run on the main thread
+                                                                            initializePlayerSource(
+                                                                                self
+                                                                            )
+                                                                        } catch (ex: Exception) {
+                                                                            self.playerNeedsSource =
+                                                                                true
+                                                                            Log.e(
+                                                                                "ExoPlayer Exception",
+                                                                                "Failed to initialize Player!"
+                                                                            )
+                                                                            Log.e(
+                                                                                "ExoPlayer Exception",
+                                                                                ex.toString()
+                                                                            )
+                                                                            self.eventEmitter.error(
+                                                                                ex.toString(),
+                                                                                ex,
+                                                                                "1001"
+                                                                            )
+                                                                        }
+                                                                    })
+                                                                } else {
+                                                                    Log.e(
+                                                                        "ExoPlayer Exception",
+                                                                        "Failed to initialize Player!"
+                                                                    )
+                                                                    eventEmitter.error(
+                                                                        "Failed to initialize Player!",
+                                                                        Exception("Current Activity is null!"),
+                                                                        "1001"
+                                                                    )
+                                                                }
+
+                                                                // Initialize handler to run on the main thread
+                                                                //}
+                                                            } else if (srcUri != null) {
+                                                                initializePlayerSource(self)
+                                                            }
+                                                        } catch (ex: Exception) {
+                                                            self.playerNeedsSource = true
+                                                            Log.e(
+                                                                "ExoPlayer Exception",
+                                                                "Failed to initialize Player!"
+                                                            )
+                                                            Log.e(
+                                                                "ExoPlayer Exception", ex.toString()
+                                                            )
+                                                            eventEmitter.error(
+                                                                ex.toString(), ex, "1001"
+                                                            )
+                                                        }
+                                                    }, 1)
     }
 
     private fun initializePlayerCore(self: ReactExoplayerView) {
@@ -441,12 +434,10 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
             DefaultLoadControl.DEFAULT_RETAIN_BACK_BUFFER_FROM_KEYFRAME
         )
         val renderersFactory =
-            DefaultRenderersFactory(context).setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
+            DefaultRenderersFactory(context).setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
                 .setEnableDecoderFallback(true)
-        player = ExoPlayer.Builder(context, renderersFactory)
-            .setBandwidthMeter(bandwidthMeter!!)
-            .setLoadControl(loadControl)
-            .build()
+        player = ExoPlayer.Builder(context, renderersFactory).setBandwidthMeter(bandwidthMeter!!)
+            .setLoadControl(loadControl).build()
         player!!.addListener(self)
         exoPlayerView!!.setPlayer(player)
         audioBecomingNoisyReceiver.setListener(self)
@@ -457,35 +448,8 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
         player!!.playbackParameters = params
     }
 
-    private fun initializePlayerDrm(self: ReactExoplayerView): DrmSessionManager? {
-        var drmSessionManager: DrmSessionManager? = null
-        if (self.drmUUID != null) {
-            drmSessionManager = try {
-                self.buildDrmSessionManager(
-                    self.drmUUID, self.drmLicenseUrl, self.drmLicenseHeader
-                )
-            } catch (e: UnsupportedDrmException) {
-                val errorStringId =
-                    if (Util.SDK_INT < 18) R.string.error_drm_not_supported else if (e.reason == UnsupportedDrmException.REASON_UNSUPPORTED_SCHEME) R.string.error_drm_unsupported_scheme else R.string.error_drm_unknown
-                eventEmitter.error(resources.getString(errorStringId), e, "3003")
-                return null
-            }
-        }
-        return drmSessionManager
-    }
-
-    private fun initializePlayerSource(self: ReactExoplayerView,
-                                       drmSessionManager: DrmSessionManager?
-    ) {
-        val mediaSourceList = buildTextSources()
-        val videoSource = buildMediaSource(self.srcUri, self.extension, drmSessionManager)
-        val mediaSource: MediaSource = if (mediaSourceList.size == 0) {
-            videoSource
-        } else {
-            mediaSourceList.add(0, videoSource)
-            val textSourceArray = mediaSourceList.toTypedArray()
-            MergingMediaSource(*textSourceArray)
-        }
+    private fun initializePlayerSource(self: ReactExoplayerView) {
+        val mediaSource = buildMediaSource(self.srcUri, self.extension)
 
         // wait for player to be set
         while (player == null) {
@@ -500,8 +464,35 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
         if (haveResumePosition) {
             player!!.seekTo(resumeWindow, resumePosition)
         }
-        player!!.setMediaSource(mediaSource, !haveResumePosition)
-        player!!.prepare()
+
+        val databaseProvider = StandaloneDatabaseProvider(context)
+        context.getExternalFilesDir("video_cache/${srcUri?.lastPathSegment}")
+            ?.let { videoCacheFile ->
+                var cacheInPool = cachePool.find { it.path == videoCacheFile.absolutePath }
+                if (cacheInPool == null) {
+                    val simpleCache =
+                        SimpleCache(videoCacheFile, NoOpCacheEvictor(), databaseProvider)
+                    cacheInPool = CacheInPool(videoCacheFile.absolutePath, simpleCache)
+                    cachePool.add(cacheInPool)
+                }
+
+                val defaultDataSourceFactory = DefaultDataSource.Factory(context)
+                val cacheDataSourceFactory = CacheDataSource.Factory().setCache(cacheInPool.cache)
+                    .setUpstreamDataSourceFactory(defaultDataSourceFactory)
+
+                val mediaItem = MediaItem.fromUri(srcUri!!)
+                val mediaSourceTemp = ProgressiveMediaSource.Factory(cacheDataSourceFactory)
+                    .setLoadErrorHandlingPolicy(
+                        config.buildLoadErrorHandlingPolicy(minLoadRetryCount)
+                    ).createMediaSource(mediaItem)
+
+                player!!.setMediaSource(mediaSourceTemp, !haveResumePosition)
+                player!!.prepare()
+            }
+
+
+        //player!!.setMediaSource(mediaSource, !haveResumePosition)
+        //player!!.prepare()
         playerNeedsSource = false
         reLayout(exoPlayerView)
         eventEmitter.loadStart()
@@ -513,89 +504,36 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
         applyModifiers()
     }
 
-    @Throws(UnsupportedDrmException::class)
-    private fun buildDrmSessionManager(uuid: UUID?,
-                                       licenseUrl: String?,
-                                       keyRequestPropertiesArray: Array<String?>?,
-                                       retryCount: Int = 0
-    ): DrmSessionManager? {
-        var retryCount = retryCount
-        return if (Util.SDK_INT < 18) {
-            null
-        } else try {
-            val drmCallback = HttpMediaDrmCallback(
-                licenseUrl, buildHttpDataSourceFactory(false)!!
-            )
-            if (keyRequestPropertiesArray != null) {
-                var i = 0
-                while (i < keyRequestPropertiesArray.size - 1) {
-                    drmCallback.setKeyRequestProperty(
-                        keyRequestPropertiesArray[i]!!, keyRequestPropertiesArray[i + 1]!!
-                    )
-                    i += 2
-                }
-            }
-            val mediaDrm = FrameworkMediaDrm.newInstance(uuid!!)
-            if (hasDrmFailed) {
-                // When DRM fails using L1 we want to switch to L3
-                mediaDrm.setPropertyString("securityLevel", "L3")
-            }
-            DefaultDrmSessionManager(uuid, mediaDrm, drmCallback, null, false, 3)
-        } catch (ex: UnsupportedDrmException) {
-            // Unsupported DRM exceptions are handled by the calling method
-            throw ex
-        } catch (ex: Exception) {
-            if (retryCount < 3) {
-                // Attempt retry 3 times in case where the OS Media DRM Framework fails for whatever reason
-                return buildDrmSessionManager(
-                    uuid, licenseUrl, keyRequestPropertiesArray, ++retryCount
-                )
-            }
-            // Handle the unknow exception and emit to JS
-            eventEmitter.error(ex.toString(), ex, "3006")
-            null
-        }
-    }
-
-    private fun buildMediaSource(uri: Uri?,
-                                 overrideExtension: String?,
-                                 drmSessionManager: DrmSessionManager?
-    ): MediaSource {
+    private fun buildMediaSource(uri: Uri?, overrideExtension: String?): MediaSource {
         checkNotNull(uri) { "Invalid video uri" }
         val type =
             Util.inferContentType((if (!TextUtils.isEmpty(overrideExtension)) ".$overrideExtension" else uri.lastPathSegment)!!)
         config.disableDisconnectError = disableDisconnectError
         val mediaItem = MediaItem.Builder().setUri(uri).build()
-        var drmProvider: DrmSessionManagerProvider? = null
-        drmProvider = if (drmSessionManager != null) {
-            DrmSessionManagerProvider { drmSessionManager }
-        } else {
-            DefaultDrmSessionManagerProvider()
-        }
         return when (type) {
             C.TYPE_SS -> SsMediaSource.Factory(
                 DefaultSsChunkSource.Factory(mediaDataSourceFactory!!),
                 buildDataSourceFactory(false)
-            ).setDrmSessionManagerProvider(drmProvider).setLoadErrorHandlingPolicy(
+            ).setLoadErrorHandlingPolicy(
                 config.buildLoadErrorHandlingPolicy(minLoadRetryCount)
             ).createMediaSource(mediaItem)
 
             C.TYPE_DASH -> DashMediaSource.Factory(
                 DefaultDashChunkSource.Factory(mediaDataSourceFactory!!),
                 buildDataSourceFactory(false)
-            ).setDrmSessionManagerProvider(drmProvider).setLoadErrorHandlingPolicy(
+            ).setLoadErrorHandlingPolicy(
                 config.buildLoadErrorHandlingPolicy(minLoadRetryCount)
             ).createMediaSource(mediaItem)
 
             C.TYPE_HLS -> HlsMediaSource.Factory(
                 mediaDataSourceFactory!!
-            ).setDrmSessionManagerProvider(drmProvider).setLoadErrorHandlingPolicy(
+            ).setLoadErrorHandlingPolicy(
                 config.buildLoadErrorHandlingPolicy(minLoadRetryCount)
             ).createMediaSource(mediaItem)
 
             C.TYPE_OTHER -> ProgressiveMediaSource.Factory(
                 mediaDataSourceFactory!!
-            ).setDrmSessionManagerProvider(drmProvider).setLoadErrorHandlingPolicy(
+            ).setLoadErrorHandlingPolicy(
                 config.buildLoadErrorHandlingPolicy(minLoadRetryCount)
             ).createMediaSource(mediaItem)
 
@@ -605,43 +543,10 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
         }
     }
 
-    private fun buildTextSources(): ArrayList<MediaSource> {
-        val textSources = ArrayList<MediaSource>()
-        if (textTracks == null) {
-            return textSources
-        }
-        for (i in 0 until textTracks!!.size()) {
-            val textTrack = textTracks!!.getMap(i)
-            val language = textTrack.getString("language")
-            val title =
-                if (textTrack.hasKey("title")) textTrack.getString("title") else "$language $i"
-            val uri = Uri.parse(textTrack.getString("uri"))
-            val textSource = buildTextSource(
-                title, uri, textTrack.getString("type"), language
-            )
-            if (textSource != null) {
-                textSources.add(textSource)
-            }
-        }
-        return textSources
-    }
-
-    private fun buildTextSource(title: String?, uri: Uri, mimeType: String?, language: String?
-    ): MediaSource {
-        val subtitleConfiguration = SubtitleConfiguration.Builder(uri)
-            .setMimeType(mimeType)
-            .setLanguage(language)
-            .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
-            .setRoleFlags(C.ROLE_FLAG_SUBTITLE)
-            .setLabel(title)
-            .build()
-        return SingleSampleMediaSource.Factory(mediaDataSourceFactory!!)
-            .createMediaSource(subtitleConfiguration, C.TIME_UNSET)
-    }
-
     private fun releasePlayer() {
         if (player != null) {
-            updateResumePosition()
+            //updateResumePosition()
+            clearResumePosition()
             player!!.release()
             player!!.removeListener(this)
             player = null
@@ -866,7 +771,6 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
             // Properties that must be accessed on the main thread
             val duration = player!!.duration
             val currentPosition = player!!.currentPosition
-            val textTrackInfo = textTrackInfo
             val trackRendererIndex = getTrackRendererIndex(C.TRACK_TYPE_VIDEO)
             val es = Executors.newSingleThreadExecutor()
             es.execute { // To prevent ANRs caused by getVideoTrackInfo we run this on a different thread and notify the player only when we're done
@@ -875,7 +779,6 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
                     currentPosition.toDouble(),
                     width,
                     height,
-                    textTrackInfo,
                     getVideoTrackInfo(trackRendererIndex),
                     trackId
                 )
@@ -926,9 +829,9 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
     private val videoTrackInfoFromManifest: WritableArray?
         private get() = getVideoTrackInfoFromManifest(0)
 
-    // We need retry count to in case where minefest request fails from poor network conditions
-    private fun getVideoTrackInfoFromManifest(retryCount: Int): WritableArray? {
-        var retryCount = retryCount
+    // We need retry count to in case where manifest request fails from poor network conditions
+    private fun getVideoTrackInfoFromManifest(maxRetryCount: Int): WritableArray? {
+        var retryCount = maxRetryCount
         val es = Executors.newSingleThreadExecutor()
         val dataSource = mediaDataSourceFactory!!.createDataSource()
         val sourceUri = srcUri
@@ -988,7 +891,7 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
                             }
                         }
                     }
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                 }
                 return null
             }
@@ -1000,33 +903,10 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
             }
             es.shutdown()
             return results
-        } catch (e: Exception) {
+        } catch (_: Exception) {
         }
         return null
     }
-
-    private val textTrackInfo: WritableArray
-        private get() {
-            val textTracks = Arguments.createArray()
-            val info = trackSelector!!.currentMappedTrackInfo
-            val index = getTrackRendererIndex(C.TRACK_TYPE_TEXT)
-            if (info == null || index == C.INDEX_UNSET) {
-                return textTracks
-            }
-            val groups = info.getTrackGroups(index)
-            for (i in 0 until groups.length) {
-                val format = groups[i].getFormat(0)
-                val textTrack = Arguments.createMap()
-                textTrack.putInt("index", i)
-                textTrack.putString("title", if (format.id != null) format.id else "")
-                textTrack.putString("type", format.sampleMimeType)
-                textTrack.putString(
-                    "language", if (format.language != null) format.language else ""
-                )
-                textTracks.pushMap(textTrack)
-            }
-            return textTracks
-        }
 
     private fun onBuffering(buffering: Boolean) {
         if (isBuffering == buffering) {
@@ -1040,9 +920,8 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
         }
     }
 
-    override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo,
-                                         newPosition: Player.PositionInfo,
-                                         reason: Int
+    override fun onPositionDiscontinuity(
+        oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int
     ) {
         if (playerNeedsSource) {
             // This will only occur if the user has performed a seek whilst in the error state. Update the
@@ -1096,22 +975,10 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
         if (e == null) {
             return
         }
+
         val errorString = "ExoPlaybackException: " + PlaybackException.getErrorCodeName(e.errorCode)
         val errorCode = "2" + e.errorCode.toString()
         val needsReInitialization = false
-        when (e.errorCode) {
-            PlaybackException.ERROR_CODE_DRM_DEVICE_REVOKED, PlaybackException.ERROR_CODE_DRM_LICENSE_ACQUISITION_FAILED, PlaybackException.ERROR_CODE_DRM_PROVISIONING_FAILED, PlaybackException.ERROR_CODE_DRM_SYSTEM_ERROR, PlaybackException.ERROR_CODE_DRM_UNSPECIFIED -> if (!hasDrmFailed) {
-                // When DRM fails to reach the app level certificate server it will fail with a source error so we assume that it is DRM related and try one more time
-                hasDrmFailed = true
-                playerNeedsSource = true
-                updateResumePosition()
-                initializePlayer()
-                setPlayWhenReady(true)
-                return
-            }
-
-            else -> {}
-        }
         eventEmitter.error(errorString, e, errorCode)
         playerNeedsSource = true
         if (isBehindLiveWindow(e)) {
@@ -1145,7 +1012,6 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
     fun setSrc(uri: Uri?, extension: String?, headers: Map<String?, String?>?) {
         if (uri != null) {
             val isSourceEqual = uri == srcUri
-            hasDrmFailed = false
             srcUri = uri
             this.extension = extension
             requestHeaders = headers
@@ -1225,33 +1091,15 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
         val frameRate: Float =
             if (format.frameRate == Format.NO_VALUE.toFloat()) 0f else format.frameRate
         val mimeType = format.sampleMimeType ?: return true
-        var isSupported = false
-        isSupported = try {
+        val isSupported: Boolean = try {
             val codecInfo = MediaCodecUtil.getDecoderInfo(mimeType, false, false)
             codecInfo!!.isVideoSizeAndRateSupportedV21(width, height, frameRate.toDouble())
         } catch (e: Exception) {
             // Failed to get decoder info - assume it is supported
             true
         }
-        return isSupported
-    }
 
-    private fun getGroupIndexForDefaultLocale(groups: TrackGroupArray): Int {
-        if (groups.length == 0) {
-            return C.INDEX_UNSET
-        }
-        var groupIndex = 0 // default if no match
-        val locale2 = Locale.getDefault().language // 2 letter code
-        val locale3 = Locale.getDefault().isO3Language // 3 letter code
-        for (i in 0 until groups.length) {
-            val format = groups[i].getFormat(0)
-            val language = format.language
-            if (language != null && language == locale2 || language == locale3) {
-                groupIndex = i
-                break
-            }
-        }
-        return groupIndex
+        return isSupported
     }
 
     fun setPausedModifier(paused: Boolean) {
@@ -1353,8 +1201,7 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
     }
 
     fun setUseTextureView(useTextureView: Boolean) {
-        val finallyUseTextureView = useTextureView && drmUUID == null
-        exoPlayerView!!.setUseTextureView(finallyUseTextureView)
+        exoPlayerView!!.setUseTextureView(useTextureView)
     }
 
     fun useSecureView(useSecureView: Boolean) {
@@ -1365,13 +1212,14 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
         exoPlayerView!!.setHideShutterView(hideShutterView)
     }
 
-    fun setBufferConfig(newMinBufferMs: Int,
-                        newMaxBufferMs: Int,
-                        newBufferForPlaybackMs: Int,
-                        newBufferForPlaybackAfterRebufferMs: Int,
-                        newMaxHeapAllocationPercent: Double,
-                        newMinBackBufferMemoryReservePercent: Double,
-                        newMinBufferMemoryReservePercent: Double
+    fun setBufferConfig(
+        newMinBufferMs: Int,
+        newMaxBufferMs: Int,
+        newBufferForPlaybackMs: Int,
+        newBufferForPlaybackAfterRebufferMs: Int,
+        newMaxHeapAllocationPercent: Double,
+        newMinBackBufferMemoryReservePercent: Double,
+        newMinBufferMemoryReservePercent: Double
     ) {
         minBufferMs = newMinBufferMs
         maxBufferMs = newMaxBufferMs
@@ -1382,38 +1230,6 @@ class ReactExoplayerView(private val themedReactContext: ThemedReactContext,
         minBufferMemoryReservePercent = newMinBufferMemoryReservePercent
         releasePlayer()
         initializePlayer()
-    }
-
-    fun setDrmType(drmType: UUID?) {
-        drmUUID = drmType
-    }
-
-    fun setDrmLicenseUrl(licenseUrl: String?) {
-        drmLicenseUrl = licenseUrl
-    }
-
-    fun setDrmLicenseHeader(header: Array<String?>?) {
-        drmLicenseHeader = header
-    }
-
-    override fun onDrmKeysLoaded(windowIndex: Int, mediaPeriodId: MediaSource.MediaPeriodId?) {
-        Log.d("DRM Info", "onDrmKeysLoaded")
-    }
-
-    override fun onDrmSessionManagerError(windowIndex: Int,
-                                          mediaPeriodId: MediaSource.MediaPeriodId?,
-                                          e: Exception
-    ) {
-        Log.d("DRM Info", "onDrmSessionManagerError")
-        eventEmitter.error("onDrmSessionManagerError", e, "3002")
-    }
-
-    override fun onDrmKeysRestored(windowIndex: Int, mediaPeriodId: MediaSource.MediaPeriodId?) {
-        Log.d("DRM Info", "onDrmKeysRestored")
-    }
-
-    override fun onDrmKeysRemoved(windowIndex: Int, mediaPeriodId: MediaSource.MediaPeriodId?) {
-        Log.d("DRM Info", "onDrmKeysRemoved")
     }
 
     companion object {

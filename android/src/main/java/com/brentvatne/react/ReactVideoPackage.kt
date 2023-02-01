@@ -1,7 +1,6 @@
 package com.brentvatne.react
 
 import com.brentvatne.exoplayer.DefaultReactExoplayerConfig
-import com.brentvatne.exoplayer.ReactExoplayerConfig
 import com.brentvatne.exoplayer.ReactExoplayerViewManager
 import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.JavaScriptModule
