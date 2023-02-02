@@ -1,4 +1,3 @@
-
 package com.brentvatne.exoplayer
 
 import android.annotation.SuppressLint
@@ -31,7 +30,6 @@ import com.google.android.exoplayer2.PlaybackParameters
 import com.google.android.exoplayer2.Player
 import com.google.android.exoplayer2.Timeline
 import com.google.android.exoplayer2.Tracks
-import com.google.android.exoplayer2.database.StandaloneDatabaseProvider
 import com.google.android.exoplayer2.mediacodec.MediaCodecUtil
 import com.google.android.exoplayer2.metadata.Metadata
 import com.google.android.exoplayer2.source.MediaSource
@@ -47,13 +45,11 @@ import com.google.android.exoplayer2.trackselection.DefaultTrackSelector
 import com.google.android.exoplayer2.trackselection.ExoTrackSelection
 import com.google.android.exoplayer2.upstream.BandwidthMeter
 import com.google.android.exoplayer2.upstream.DataSource
-import com.google.android.exoplayer2.upstream.DataSpec
 import com.google.android.exoplayer2.upstream.DefaultAllocator
 import com.google.android.exoplayer2.upstream.DefaultBandwidthMeter
 import com.google.android.exoplayer2.upstream.DefaultDataSource
 import com.google.android.exoplayer2.upstream.HttpDataSource
 import com.google.android.exoplayer2.upstream.cache.CacheDataSource
-import com.google.android.exoplayer2.upstream.cache.NoOpCacheEvictor
 import com.google.android.exoplayer2.upstream.cache.SimpleCache
 import com.google.android.exoplayer2.util.Util
 import okhttp3.internal.wait
@@ -70,7 +66,7 @@ import kotlin.math.roundToInt
 class ReactExoplayerView(
     private val themedReactContext: ThemedReactContext,
     config: ReactExoplayerConfig,
-    private val cachePool: MutableList<CacheInPool>
+    private val simpleCache: SimpleCache? = null
 ) : FrameLayout(
     themedReactContext
 ), Player.Listener, BandwidthMeter.EventListener, BecomingNoisyListener,
@@ -449,8 +445,6 @@ class ReactExoplayerView(
     }
 
     private fun initializePlayerSource(self: ReactExoplayerView) {
-        //val mediaSource = buildMediaSource(self.srcUri, self.extension)
-
         // wait for player to be set
         while (player == null) {
             try {
@@ -465,50 +459,25 @@ class ReactExoplayerView(
             player!!.seekTo(resumeWindow, resumePosition)
         }
 
-        val databaseProvider = StandaloneDatabaseProvider(context)
-        context.getExternalFilesDir("video_cache/${srcUri?.lastPathSegment}")
-            ?.let { videoCacheFile ->
-                var cacheInPool = cachePool.find { it.path == videoCacheFile.absolutePath }
-                if (cacheInPool == null) {
-                    val simpleCache =
-                        SimpleCache(videoCacheFile, NoOpCacheEvictor(), databaseProvider)
-                    cacheInPool = CacheInPool(videoCacheFile.absolutePath, simpleCache)
-                    cachePool.add(cacheInPool)
-                }
+        val defaultDataSourceFactory = DefaultDataSource.Factory(context)
+        val mediaItem = MediaItem.fromUri(srcUri!!)
 
-                val defaultDataSourceFactory = DefaultDataSource.Factory(context)
-                val cacheDataSourceFactory = CacheDataSource.Factory().setCache(cacheInPool.cache)
-                    .setUpstreamDataSourceFactory(defaultDataSourceFactory)
+        if (simpleCache != null && srcUri?.scheme?.startsWith("http") == true) {
+            val cacheDataSourceFactory = CacheDataSource.Factory().setCache(simpleCache)
+                .setUpstreamDataSourceFactory(defaultDataSourceFactory)
 
-                val cacheDataSource = cacheDataSourceFactory.createDataSource()
-                val dataSpec = DataSpec.Builder().setUri(srcUri!!).build()
+            val mediaSource =
+                ProgressiveMediaSource.Factory(cacheDataSourceFactory).setLoadErrorHandlingPolicy(
+                    config.buildLoadErrorHandlingPolicy(minLoadRetryCount)
+                ).createMediaSource(mediaItem)
+            player!!.setMediaSource(mediaSource, !haveResumePosition)
+        } else {
+            val mediaSource = buildMediaSource(self.srcUri, self.extension)
+            player!!.setMediaSource(mediaSource, !haveResumePosition)
+        }
 
-                //val cacheWriter = CacheWriter(cacheDataSource, dataSpec, null, null)
-                //val cacheKey = cacheDataSource.cacheKeyFactory.buildCacheKey(dataSpec)
+        player!!.prepare()
 
-                //val cachedBytes = cacheDataSource.cache.getCachedBytes(cacheKey, 0, Long.MAX_VALUE)
-                //Log.d("mine", "cachedBytes ${cachedBytes.toString()}")
-
-                //val lifecycle = findViewTreeLifecycleOwner()
-                //lifecycle?.let {
-                //    it.lifecycleScope.launch(Dispatchers.IO) {
-                //        cacheWriter.cache()
-                //    }
-                //}
-
-                val mediaItem = MediaItem.fromUri(srcUri!!)
-                val mediaSource = ProgressiveMediaSource.Factory(cacheDataSourceFactory)
-                    .setLoadErrorHandlingPolicy(
-                        config.buildLoadErrorHandlingPolicy(minLoadRetryCount)
-                    ).createMediaSource(mediaItem)
-
-                player!!.setMediaSource(mediaSource, !haveResumePosition)
-                player!!.prepare()
-            }
-
-
-        //player!!.setMediaSource(mediaSource, !haveResumePosition)
-        //player!!.prepare()
         playerNeedsSource = false
         reLayout(exoPlayerView)
         eventEmitter.loadStart()

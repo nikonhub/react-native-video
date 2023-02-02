@@ -23,6 +23,6 @@ class ReactVideoPackage : ReactPackage {
     override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> {
         val config = DefaultReactExoplayerConfig(reactContext)
 
-        return listOf<ViewManager<*, *>>(ReactExoplayerViewManager(config))
+        return listOf<ViewManager<*, *>>(ReactExoplayerViewManager(reactContext, config))
     }
 }

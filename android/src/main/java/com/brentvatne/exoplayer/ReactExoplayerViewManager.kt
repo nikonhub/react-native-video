@@ -1,29 +1,72 @@
 package com.brentvatne.exoplayer
 
 import android.net.Uri
+import android.os.Environment
 import android.text.TextUtils
+import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.common.MapBuilder
 import com.facebook.react.uimanager.ThemedReactContext
 import com.facebook.react.uimanager.ViewGroupManager
 import com.facebook.react.uimanager.annotations.ReactProp
 import com.google.android.exoplayer2.DefaultLoadControl
+import com.google.android.exoplayer2.database.StandaloneDatabaseProvider
 import com.google.android.exoplayer2.upstream.RawResourceDataSource
+import com.google.android.exoplayer2.upstream.cache.LeastRecentlyUsedCacheEvictor
 import com.google.android.exoplayer2.upstream.cache.SimpleCache
+import java.io.File
 import java.util.Locale
 
-data class CacheInPool(val path: String, val cache: SimpleCache)
-
-class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) :
-    ViewGroupManager<ReactExoplayerView>() {
+class ReactExoplayerViewManager(
+    context: ReactApplicationContext, private val config: ReactExoplayerConfig
+) : ViewGroupManager<ReactExoplayerView>() {
     override fun getName(): String {
         return REACT_CLASS
     }
 
-    val cachePool: MutableList<CacheInPool> = mutableListOf()
+    private var simpleCache: SimpleCache? = null
+
+    init {
+        val databaseProvider = StandaloneDatabaseProvider(context)
+        simpleCache = if (isExternalStorageWritable()) {
+            val externalCacheFile = File(context.externalCacheDir, CACHE_DIR)
+            SimpleCache(
+                externalCacheFile, LeastRecentlyUsedCacheEvictor(
+                    MAX_VIDEO_CACHE_SIZE_IN_BYTES.toLong()
+                ), databaseProvider
+            )
+
+        } else {
+            val cacheFile = File(context.cacheDir, CACHE_DIR)
+            SimpleCache(
+                cacheFile,
+                LeastRecentlyUsedCacheEvictor(MAX_VIDEO_CACHE_SIZE_IN_BYTES.toLong()),
+                databaseProvider
+            )
+        }
+    }
+
+    private fun isExternalStorageWritable(): Boolean {
+        return Environment.getExternalStorageState() == Environment.MEDIA_MOUNTED
+    }
+
 
     override fun createViewInstance(themedReactContext: ThemedReactContext): ReactExoplayerView {
-        return ReactExoplayerView(themedReactContext, config, cachePool)
+        //val cacheDataSource = cacheDataSourceFactory.createDataSource()
+        //val dataSpec = DataSpec.Builder().setUri(srcUri!!).build()
+        //val cacheWriter = CacheWriter(cacheDataSource, dataSpec, null, null)
+        //val cacheKey = cacheDataSource.cacheKeyFactory.buildCacheKey(dataSpec)
+
+        //val cachedBytes = cacheDataSource.cache.getCachedBytes(cacheKey, 0, Long.MAX_VALUE)
+        //Log.d("mine", "cachedBytes ${cachedBytes.toString()}")
+
+        //val lifecycle = findViewTreeLifecycleOwner()
+        //lifecycle?.let {
+        //    it.lifecycleScope.launch(Dispatchers.IO) {
+        //        cacheWriter.cache()
+        //    }
+        //}
+        return ReactExoplayerView(themedReactContext, config, simpleCache)
     }
 
     override fun onDropViewInstance(view: ReactExoplayerView) {
@@ -104,8 +147,7 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) :
 
     @ReactProp(name = PROP_PREVENTS_DISPLAY_SLEEP_DURING_VIDEO_PLAYBACK, defaultBoolean = false)
     fun setPreventsDisplaySleepDuringVideoPlayback(
-        videoView: ReactExoplayerView,
-        preventsSleep: Boolean
+        videoView: ReactExoplayerView, preventsSleep: Boolean
     ) {
         videoView.setPreventsDisplaySleepDuringVideoPlayback(preventsSleep)
     }
@@ -289,6 +331,8 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) :
 
     companion object {
         private const val REACT_CLASS = "RCTVideo"
+        private const val MAX_VIDEO_CACHE_SIZE_IN_BYTES = 200 * 1024 * 1024
+        private const val CACHE_DIR = "video_cache"
         private const val PROP_SRC = "src"
         private const val PROP_SRC_URI = "uri"
         private const val PROP_SRC_TYPE = "type"
