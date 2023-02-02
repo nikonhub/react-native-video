@@ -1,3 +1,4 @@
+
 package com.brentvatne.exoplayer
 
 import android.annotation.SuppressLint
@@ -46,6 +47,7 @@ import com.google.android.exoplayer2.trackselection.DefaultTrackSelector
 import com.google.android.exoplayer2.trackselection.ExoTrackSelection
 import com.google.android.exoplayer2.upstream.BandwidthMeter
 import com.google.android.exoplayer2.upstream.DataSource
+import com.google.android.exoplayer2.upstream.DataSpec
 import com.google.android.exoplayer2.upstream.DefaultAllocator
 import com.google.android.exoplayer2.upstream.DefaultBandwidthMeter
 import com.google.android.exoplayer2.upstream.DefaultDataSource
@@ -104,6 +106,8 @@ class ReactExoplayerView(
     private var maxHeapAllocationPercent = DEFAULT_MAX_HEAP_ALLOCATION_PERCENT
     private var minBackBufferMemoryReservePercent = DEFAULT_MIN_BACK_BUFFER_MEMORY_RESERVE
     private var minBufferMemoryReservePercent = DEFAULT_MIN_BUFFER_MEMORY_RESERVE
+
+    private var lifecycleEventListener: LifecycleEventListener? = null
 
     // Props from React
     private var backBufferDurationMs = DefaultLoadControl.DEFAULT_BACK_BUFFER_DURATION_MS
@@ -168,9 +172,10 @@ class ReactExoplayerView(
         audioManager = themedReactContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         audioBecomingNoisyReceiver = AudioBecomingNoisyReceiver(themedReactContext)
 
-        themedReactContext.addLifecycleEventListener(object : LifecycleEventListener {
+        lifecycleEventListener = object : LifecycleEventListener {
             override fun onHostResume() {
                 initializePlayer()
+
                 if (!playInBackground || !isInBackground) {
                     setPlayWhenReady(!isPaused)
                 }
@@ -190,7 +195,9 @@ class ReactExoplayerView(
                 stopPlayback()
                 themedReactContext.removeLifecycleEventListener(this)
             }
-        })
+        }
+
+        themedReactContext.addLifecycleEventListener(lifecycleEventListener)
     }
 
     override fun setId(id: Int) {
@@ -241,10 +248,13 @@ class ReactExoplayerView(
         super.onDetachedFromWindow()/* We want to be able to continue playing audio when switching tabs.
          * Leave this here in case it causes issues.
          */
-        // stopPlayback();
+        //stopPlayback()
     }
 
     fun cleanUpResources() {
+        lifecycleEventListener?.let {
+            themedReactContext.removeLifecycleEventListener(it)
+        }
         stopPlayback()
     }
 
@@ -353,34 +363,27 @@ class ReactExoplayerView(
 
                                                             if (playerNeedsSource && srcUri != null) {
                                                                 //exoPlayerView!!.invalidateAspectRatio()
-                                                                // DRM session manager creation must be done on a different thread to prevent crashes so we start a new thread
-                                                                //val es = Executors.newSingleThreadExecutor()
-                                                                //es.execute {
                                                                 if (activity != null) {
-                                                                    activity.runOnUiThread(Runnable {
-                                                                        try {
-                                                                            // Source initialization must run on the main thread
-                                                                            initializePlayerSource(
-                                                                                self
-                                                                            )
-                                                                        } catch (ex: Exception) {
-                                                                            self.playerNeedsSource =
-                                                                                true
-                                                                            Log.e(
-                                                                                "ExoPlayer Exception",
-                                                                                "Failed to initialize Player!"
-                                                                            )
-                                                                            Log.e(
-                                                                                "ExoPlayer Exception",
-                                                                                ex.toString()
-                                                                            )
-                                                                            self.eventEmitter.error(
-                                                                                ex.toString(),
-                                                                                ex,
-                                                                                "1001"
-                                                                            )
-                                                                        }
-                                                                    })
+                                                                    try {
+                                                                        // Source initialization must run on the main thread
+                                                                        initializePlayerSource(self)
+                                                                    } catch (ex: Exception) {
+                                                                        self.playerNeedsSource =
+                                                                            true
+                                                                        Log.e(
+                                                                            "ExoPlayer Exception",
+                                                                            "Failed to initialize Player!"
+                                                                        )
+                                                                        Log.e(
+                                                                            "ExoPlayer Exception",
+                                                                            ex.toString()
+                                                                        )
+                                                                        self.eventEmitter.error(
+                                                                            ex.toString(),
+                                                                            ex,
+                                                                            "1001"
+                                                                        )
+                                                                    }
                                                                 } else {
                                                                     Log.e(
                                                                         "ExoPlayer Exception",
@@ -392,9 +395,6 @@ class ReactExoplayerView(
                                                                         "1001"
                                                                     )
                                                                 }
-
-                                                                // Initialize handler to run on the main thread
-                                                                //}
                                                             } else if (srcUri != null) {
                                                                 initializePlayerSource(self)
                                                             }
@@ -449,7 +449,7 @@ class ReactExoplayerView(
     }
 
     private fun initializePlayerSource(self: ReactExoplayerView) {
-        val mediaSource = buildMediaSource(self.srcUri, self.extension)
+        //val mediaSource = buildMediaSource(self.srcUri, self.extension)
 
         // wait for player to be set
         while (player == null) {
@@ -480,13 +480,29 @@ class ReactExoplayerView(
                 val cacheDataSourceFactory = CacheDataSource.Factory().setCache(cacheInPool.cache)
                     .setUpstreamDataSourceFactory(defaultDataSourceFactory)
 
+                val cacheDataSource = cacheDataSourceFactory.createDataSource()
+                val dataSpec = DataSpec.Builder().setUri(srcUri!!).build()
+
+                //val cacheWriter = CacheWriter(cacheDataSource, dataSpec, null, null)
+                //val cacheKey = cacheDataSource.cacheKeyFactory.buildCacheKey(dataSpec)
+
+                //val cachedBytes = cacheDataSource.cache.getCachedBytes(cacheKey, 0, Long.MAX_VALUE)
+                //Log.d("mine", "cachedBytes ${cachedBytes.toString()}")
+
+                //val lifecycle = findViewTreeLifecycleOwner()
+                //lifecycle?.let {
+                //    it.lifecycleScope.launch(Dispatchers.IO) {
+                //        cacheWriter.cache()
+                //    }
+                //}
+
                 val mediaItem = MediaItem.fromUri(srcUri!!)
-                val mediaSourceTemp = ProgressiveMediaSource.Factory(cacheDataSourceFactory)
+                val mediaSource = ProgressiveMediaSource.Factory(cacheDataSourceFactory)
                     .setLoadErrorHandlingPolicy(
                         config.buildLoadErrorHandlingPolicy(minLoadRetryCount)
                     ).createMediaSource(mediaItem)
 
-                player!!.setMediaSource(mediaSourceTemp, !haveResumePosition)
+                player!!.setMediaSource(mediaSource, !haveResumePosition)
                 player!!.prepare()
             }
 
