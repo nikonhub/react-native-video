@@ -52,8 +52,11 @@ dependencies {
     def kotlin_version = rootProject.ext.has('kotlinVersion') ? rootProject.ext.get('kotlinVersion') : project.properties['Video_kotlinVersion']
     implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
     implementation "com.facebook.react:react-native:${safeExtGet('reactNativeVersion', '+')}"
-    implementation('com.google.android.exoplayer:exoplayer:2.18.1') {
+    implementation('com.google.android.exoplayer:exoplayer:2.18.5') {
         exclude group: 'com.android.support'
+    }
+    implementation('com.google.android.exoplayer:extension-okhttp:2.18.5') {
+        exclude group: 'com.squareup.okhttp3', module: 'okhttp'
     }
 
     // All support libs must use the same version
@@ -62,8 +65,5 @@ dependencies {
     implementation "androidx.media:media:1.1.0"
     implementation "androidx.activity:activity:1.4.0"
 
-    implementation('com.google.android.exoplayer:extension-okhttp:2.18.1') {
-        exclude group: 'com.squareup.okhttp3', module: 'okhttp'
-    }
     implementation "com.squareup.okhttp3:okhttp:" + '$OKHTTP_VERSION'
 }
